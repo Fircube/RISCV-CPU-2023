@@ -4,4 +4,4 @@
 
 A toy RISCV-CPU designed using Verilog.
 
-> [Overview Structure](./overview.md)
+[Overview Structure](https://github.com/Fircube/RISCV-CPU-2023/blob/main/overview.md)
