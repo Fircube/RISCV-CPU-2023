@@ -24,6 +24,10 @@
 *  UART controller.  Universal Asynchronous Receiver/Transmitter control module for an RS-232
 *  (serial) port.
 ***************************************************************************************************/
+`include "./riscv/src/common/uart/uart_baud_clk.v"
+`include "./riscv/src/common/uart/uart_rx.v"
+`include "./riscv/src/common/uart/uart_tx.v"
+`include "./riscv/src/common/fifo/fifo.v"
 
 module uart
 #(
