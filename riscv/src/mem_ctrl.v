@@ -5,6 +5,7 @@ module memCtrl (
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
     input wire rdy_in,  // ready signal, pause cpu when low
+    input wire roll_back, // wrong prediction signal
 
     input wire io_buffer_full,  // 1 if uart buffer is full
 
@@ -47,10 +48,11 @@ module memCtrl (
   reg                       q_lsb_out_en;
   reg  [      `DATA_WIDTH]  q_lsb_dout;
 
-  reg                       q_if_out_en;
+  // reg                       q_if_out_en;
 
   //
   reg  [      `ADDR_WIDTH]  store_a;
+
   // ICache input 
   reg                       icache_mem_in_en;
   reg  [      `ADDR_WIDTH]  icache_mem_ain;
@@ -86,44 +88,47 @@ module memCtrl (
       q_mem_dout <= 0;
       q_mem_aout <= 0;
       q_lsb_out_en <= 0;
-      q_if_out_en <= 0;
+      // q_if_out_en <= 0;
     end else if (!rdy_in || io_buffer_full) begin
       // nothing
     end else begin
       case (status)
         IDLE: begin
-          if (if_out_en || lsb_out_en) begin
-            q_if_out_en  <= 0;
+          if (lsb_out_en) begin
+            //   q_if_out_en  <= 0;
             q_lsb_out_en <= 0;
-          end else if (lsb_in_en) begin  // load & store first
-            if (lsb_rw) begin
-              status  <= STORE;
-              store_a <= lsb_ain;
-            end else begin
-              status <= LOAD;
-              q_mem_aout <= lsb_ain;
-              q_lsb_dout <= 0;
-            end
-            stage <= 0;
-            steps <= {3'b0, lsb_data_width};
-          end else if (if_in_en) begin
-            if (icacheMiss) begin
-              status <= IF;
-              q_mem_aout <= if_ain;
-              icache_mem_ain <= if_ain;
+          end else if (!roll_back) begin
+            if (lsb_in_en) begin  // load & store first
+              if (lsb_rw) begin
+                status  <= STORE;
+                store_a <= lsb_ain;
+              end else begin
+                status <= LOAD;
+                q_mem_aout <= lsb_ain;
+                q_lsb_dout <= 0;
+              end
               stage <= 0;
-              steps <= 64;
-            end else begin
-              status <= IDLE;
-              stage <= 0;
-              q_mem_rw <= 0;
-              q_mem_aout <= 0;
+              steps <= {3'b0, lsb_data_width};
+            end else if (if_in_en) begin
+              if (icacheMiss) begin
+                status <= IF;
+                q_mem_aout <= {if_ain[`ICACHE_TAG_RANGE], if_ain[`ICACHE_IDX_RANGE], 6'b0};
+                icache_mem_ain <= if_ain;
+                stage <= 0;
+                steps <= 64;
+              end
+              // else begin
+              //   status <= IDLE;
+              //   stage <= 0;
+              //   q_mem_rw <= 0;
+              //   q_mem_aout <= 0;
+              // end
             end
           end
         end
         IF: begin
           if (icacheMiss) begin
-            icache_mem_din_[stage] <= mem_din;
+            icache_mem_din_[stage-1] <= mem_din;
             if (stage + 1 == steps) q_mem_aout <= 0;
             else q_mem_aout <= q_mem_aout + 1;
             if (stage == steps) begin
@@ -134,30 +139,36 @@ module memCtrl (
           end else begin
             status <= IDLE;
             stage <= 0;
-            q_if_out_en <= 1;
             q_mem_rw <= 0;
             q_mem_aout <= 0;
           end
         end
         LOAD: begin
-          case (stage)
-            1: q_lsb_dout[7:0] <= mem_din;
-            2: q_lsb_dout[15:8] <= mem_din;
-            3: q_lsb_dout[23:16] <= mem_din;
-            4: q_lsb_dout[31:24] <= mem_din;
-          endcase
-          if (stage + 1 == steps) q_mem_aout <= 0;
-          else q_mem_aout <= q_mem_aout + 1;
-          if (stage == 0) q_mem_aout = store_a;
-          else q_mem_aout = q_mem_aout + 1;
-          if (stage == steps) begin
+          if (roll_back) begin
             status <= IDLE;
             stage <= 0;
-            q_lsb_out_en <= 1;
             q_mem_rw <= 0;
             q_mem_aout <= 0;
+            q_lsb_out_en <= 0;
+            q_lsb_dout <= 0;
           end else begin
-            stage <= stage + 1;
+            case (stage)
+              1: q_lsb_dout[7:0] <= mem_din;
+              2: q_lsb_dout[15:8] <= mem_din;
+              3: q_lsb_dout[23:16] <= mem_din;
+              4: q_lsb_dout[31:24] <= mem_din;
+            endcase
+            if (stage + 1 == steps) q_mem_aout <= 0;
+            else q_mem_aout <= q_mem_aout + 1;
+            if (stage == steps) begin
+              status <= IDLE;
+              stage <= 0;
+              q_mem_rw <= 0;
+              q_mem_aout <= 0;
+              q_lsb_out_en <= 1;
+            end else begin
+              stage <= stage + 1;
+            end
           end
         end
         STORE: begin
@@ -191,7 +202,7 @@ module memCtrl (
   assign mem_aout = q_mem_aout;
   assign lsb_out_en = q_lsb_out_en;
   assign lsb_dout = q_lsb_dout;
-  assign if_out_en = q_if_out_en;
+  // assign if_out_en = q_if_out_en;
 
 
 endmodule

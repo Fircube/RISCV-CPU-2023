@@ -4,17 +4,19 @@ module iCache (
     input wire clk,    // system clock signal
     input wire rst_in, // reset signal
 
-    input wire [`ADDR_WIDTH] if_ain,
-
+    // RAM
     input wire                     mem_in_en,
     input wire [      `ADDR_WIDTH] mem_ain,
     input wire [`ICACHE_BLK_WIDTH] mem_din,
 
+    // IF
+    input  wire [ `ADDR_WIDTH] if_ain,       // address from IF
     output wire                miss,
     output wire                if_out_en,
     output wire [`INSTR_WIDTH] if_instr_out
 );
 
+  // inner
   reg cacheValid[`ICACHE_SIZE-1:0];
   reg [`ICACHE_TAG_WIDTH] cacheTag[`ICACHE_SIZE-1:0];
   reg [`ICACHE_BLK_WIDTH] cacheData[`ICACHE_SIZE-1:0];
@@ -24,6 +26,7 @@ module iCache (
   wire [`ICACHE_IDX_WIDTH] pc_idx = if_ain[`ICACHE_IDX_RANGE];
   wire [`ICACHE_TAG_WIDTH] pc_tag = if_ain[`ICACHE_TAG_RANGE];
   wire hit = cacheValid[pc_idx] && (cacheTag[pc_idx] == pc_tag);
+
   wire [`ICACHE_IDX_WIDTH] mem_pc_idx = mem_ain[`ICACHE_IDX_RANGE];
   wire [`ICACHE_TAG_WIDTH] mem_pc_tag = mem_ain[`ICACHE_TAG_RANGE];
 
