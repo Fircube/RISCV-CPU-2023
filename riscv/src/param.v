@@ -22,17 +22,20 @@
 `define ROB_SIZE 16
 `define REG_SIZE 32
 `define RS_SIZE 16
+`define LSB_SIZE 16
 
 // width
 `define ROB_WIDTH 15:0
 `define REG_WIDTH 31:0
 `define RS_WIDTH 15:0
+`define LSB_WIDTH 15:0
 
 // index width
 `define ROB_IDX_SIZE 4
 `define ROB_IDX_WIDTH 3:0
 `define REG_IDX_WIDTH 4:0
 `define RS_IDX_WIDTH 3:0
+`define LSB_IDX_WIDTH 3:0
 
 // opcode
 `define OPCODE_RANGE 6:0
@@ -146,3 +149,9 @@
 `define RS2_RANGE 24:20
 `define RD_RANGE 11:7
 `define REG_WIDTH 4:0
+
+// predictor
+`define BHT_SIZE 256
+`define BHT_IDX_RANGE 9:2
+`define BHT_IDX_WIDTH 7:0
+`define BHT_WIDTH 255:0
