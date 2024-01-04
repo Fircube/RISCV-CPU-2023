@@ -73,7 +73,7 @@ module decoder (
     output wire [      `DATA_WIDTH] rob_val_out,
     output wire                     rob_jump_out,
     output wire [      `ADDR_WIDTH] rob_jump_from,
-    output wire [      `ADDR_WIDTH] rob_jump_to
+    output wire [      `ADDR_WIDTH] rob_not_jump_to
 );
 
   wire [`OPCODE_WIDTH] opcode = if_instr_in[`OPCODE_RANGE];
@@ -133,7 +133,7 @@ module decoder (
   reg [`DATA_WIDTH] q_rob_val_out;
   reg q_rob_jump_out;
   reg [`ADDR_WIDTH] q_rob_jump_from;
-  reg [`ADDR_WIDTH] q_rob_jump_to;
+  reg [`ADDR_WIDTH] q_rob_not_jump_to;
 
   always @(posedge clk) begin
     if (rst_in || roll_back) begin
@@ -168,7 +168,7 @@ module decoder (
       q_rob_val_out <= 32'b0;
       q_rob_jump_out <= 1'b0;
       q_rob_jump_from <= 32'b0;
-      q_rob_jump_to <= 32'b0;
+      q_rob_not_jump_to <= 32'b0;
     end else if (!rdy_in) begin
       // nothing
     end else if (if_in_en) begin
@@ -339,7 +339,7 @@ module decoder (
           q_rob_val_out <= if_pc_in + 4;
           q_rob_jump_out <= if_pred_jump_in;
           q_rob_jump_from <= if_pc_in;
-          q_rob_jump_to <= if_pred_jump_in? if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0}:if_pc_in+4;
+          q_rob_not_jump_to <= if_pred_jump_in?if_pc_in+4: if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0};
 
           q_rf_out_en <= 1'b0;
           q_rs_out_en <= 1'b1;
@@ -475,5 +475,5 @@ module decoder (
   assign rob_val_out      = q_rob_val_out;
   assign rob_jump_out     = q_rob_jump_out;
   assign rob_jump_from    = q_rob_jump_from;
-  assign rob_jump_to      = q_rob_jump_to;
+  assign rob_not_jump_to      = q_rob_not_jump_to;
 endmodule

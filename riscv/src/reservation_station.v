@@ -14,7 +14,7 @@ module rs (
 
     // decoder
     input wire                    de_in_en,
-    input wire [  `ROB_IDX_WIDTH] rs2cdb_rob_idx_in,
+    input wire [  `ROB_IDX_WIDTH] de_rob_idx_in,
     input wire [`RS_OPCODE_WIDTH] de_op_in,
     input wire [     `DATA_WIDTH] de_Vj_in,
     input wire                    de_Qj_in_en,
@@ -118,7 +118,7 @@ module rs (
 
     end else begin
       if (de_in_en) begin
-        rob_idx[nxt_free_idx] <= rs2cdb_rob_idx_in;
+        rob_idx[nxt_free_idx] <= de_rob_idx_in;
         busy[nxt_free_idx] <= 1'b1;
         op[nxt_free_idx] <= de_op_in;
         Vj[nxt_free_idx] <= de_Vj_in;

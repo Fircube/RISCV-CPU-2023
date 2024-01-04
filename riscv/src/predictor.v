@@ -4,7 +4,7 @@ module predictor (
         input wire clk,     // system clock signal
         input wire rst_in,  // reset signal
         input wire rdy_in,  // ready signal, pause cpu when low
-        input  wire [`ADDR_WIDTH] mem_ain,    // address from memory controller
+        input  wire [`ADDR_WIDTH]     mem_ain,    // address from memory controller
         input  wire                   rob_in_en,
         input  wire [`ADDR_WIDTH]     rob_ain,
         input  wire                   rob_jump,
