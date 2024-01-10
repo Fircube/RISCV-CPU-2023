@@ -1,3 +1,4 @@
+// `include "param.v"
 `include "./riscv/src/param.v"
 
 module predictor (
@@ -13,7 +14,8 @@ module predictor (
 
     reg [1:0]             bht[`BHT_WIDTH];
 
-    wire [`BHT_WIDTH] pre_idx = mem_ain[`BHT_IDX_RANGE];
+    // wire [`BHT_WIDTH] pre_idx    = mem_ain[`BHT_IDX_RANGE]; // ?
+    reg [`BHT_WIDTH] pre_idx;
     wire [`BHT_WIDTH] update_idx = rob_ain[`BHT_IDX_RANGE];
 
     assign jump = bht[pre_idx][1];
@@ -22,6 +24,7 @@ module predictor (
 
     always @(posedge clk) begin
         if (rst_in) begin
+            pre_idx = 0;
             for (i = 0; i < `BHT_SIZE; i = i + 1) begin
                 bht[i] <= 2'b01;
             end
@@ -29,6 +32,7 @@ module predictor (
         else if (!rdy_in) begin
         end
         else begin
+            pre_idx <= mem_ain[`BHT_IDX_RANGE];
             if (rob_in_en) begin
                 case (bht[update_idx])
                     2'b00:

@@ -1,3 +1,4 @@
+// `include "param.v"
 `include "./riscv/src/param.v"
 module decoder (
     input wire clk,  // system clock signal
@@ -6,25 +7,29 @@ module decoder (
     input wire roll_back,  // wrong prediction signal
 
     // Instruction Fetch
-    input wire                if_in_en,         // instruction fetch enable
-    input wire                if_pred_jump_in,  // prediction jump signal
-    input wire [ `ADDR_WIDTH] if_pc_in,         // instruction fetch pc
-    input wire [`INSTR_WIDTH] if_instr_in,      // instruction fetch instruction
+    input wire                if_in_en,    // instruction fetch enable
+    input wire [ `ADDR_WIDTH] if_pc_in,    // instruction fetch pc
+    input wire [`INSTR_WIDTH] if_instr_in, // instruction fetch instruction
 
     output wire stall_reset,
     output wire [`ADDR_WIDTH] new_pc,
 
+    // Predictor
+    input wire jump,  // prediction jump signal from predictor
+
     // Register File
-    input wire                  rs1_busy,
-    input wire [`ROB_IDX_WIDTH] rs1_rob_idx_in,
-    input wire [   `DATA_WIDTH] rs1_val_in,
-    input wire                  rs2_busy,
-    input wire [`ROB_IDX_WIDTH] rs2_rob_idx_in,
-    input wire [   `DATA_WIDTH] rs2_val_in,
+    // output wire [`REG_IDX_WIDTH] rs1,
+    input  wire                  rs1_busy,
+    input  wire [`ROB_IDX_WIDTH] rs1_dep_in,
+    input  wire [   `DATA_WIDTH] rs1_val_in,
+    // output wire [`REG_IDX_WIDTH] rs2,
+    input  wire                  rs2_busy,
+    input  wire [`ROB_IDX_WIDTH] rs2_dep_in,
+    input  wire [   `DATA_WIDTH] rs2_val_in,
 
     output wire                  rf_out_en,
-    output wire [`ROB_IDX_WIDTH] rf_rob_idx_out,
     output wire [`REG_IDX_WIDTH] rf_dest_out,
+    output wire [`ROB_IDX_WIDTH] rf_rob_idx_out,
 
     // Reservation Station
     input wire                  rs_in_en,
@@ -59,11 +64,11 @@ module decoder (
     output wire [      `DATA_WIDTH] lsb_offset_out,
 
     // Reorder Buffer
-    input wire [`ROB_IDX_WIDTH] rob_idx_rear,
-    input wire                  rob_ready_in,
-    input wire [   `DATA_WIDTH] rob_din,
+    output wire [`ROB_IDX_WIDTH] stall_rob_idx_out,
 
-    output wire [`ROB_IDX_WIDTH] rob_request_out,
+    input wire [`ROB_IDX_WIDTH] rob_idx_rear,
+    // input wire                  rob_ready_in,
+    // input wire [   `DATA_WIDTH] rob_val_in,
 
     output wire                     rob_out_en,
     output wire [   `ROB_IDX_WIDTH] rob_idx_out,
@@ -72,7 +77,7 @@ module decoder (
     output wire [   `REG_IDX_WIDTH] rob_dest_out,
     output wire [      `DATA_WIDTH] rob_val_out,
     output wire                     rob_jump_out,
-    output wire [      `ADDR_WIDTH] rob_jump_from,
+    output wire [      `ADDR_WIDTH] rob_instr_aout,
     output wire [      `ADDR_WIDTH] rob_not_jump_to
 );
 
@@ -80,14 +85,14 @@ module decoder (
   wire [`FUNCT3_WIDTH] func3 = if_instr_in[`FUNCT3_RANGE];
   wire [`FUNCT7_WIDTH] func7 = if_instr_in[`FUNCT7_RANGE];
 
-  wire [`REG_WIDTH] rs1 = if_instr_in[`RS1_RANGE];
-  wire [`REG_WIDTH] rs2 = if_instr_in[`RS2_RANGE];
+  // assign rs1 = if_instr_in[`RS1_RANGE];
+  // assign rs2 = if_instr_in[`RS2_RANGE];
   wire [`REG_WIDTH] rd = if_instr_in[`RD_RANGE];
 
-  wire rs_update_rs1 = rs_in_en && (rs1_rob_idx_in == rs_rob_idx_in);
-  wire rs_update_rs2 = rs_in_en && (rs2_rob_idx_in == rs_rob_idx_in);
-  wire lsb_update_rs1 = lsb_in_en && (rs1_rob_idx_in == lsb_rob_idx_in);
-  wire lsb_update_rs2 = lsb_in_en && (rs2_rob_idx_in == lsb_rob_idx_in);
+  wire rs_update_rs1 = rs_in_en && (rs1_dep_in == rs_rob_idx_in);
+  wire rs_update_rs2 = rs_in_en && (rs2_dep_in == rs_rob_idx_in);
+  wire lsb_update_rs1 = lsb_in_en && (rs1_dep_in == lsb_rob_idx_in);
+  wire lsb_update_rs2 = lsb_in_en && (rs2_dep_in == lsb_rob_idx_in);
   wire rs1_busy_now = rs1_busy && !(rs_update_rs1 || lsb_update_rs1);
   wire rs2_busy_now = rs2_busy && !(rs_update_rs2 || lsb_update_rs2);
   wire [`DATA_WIDTH] rs1_val = rs1_busy_now?(rs1_busy?(rs_update_rs1?rs_val_in:lsb_val_in):rs1_val_in):0;
@@ -95,7 +100,6 @@ module decoder (
 
   reg q_stall_reset;
   reg [`ADDR_WIDTH] q_new_pc;
-  reg [`ROB_IDX_WIDTH] q_rob_request_out;
 
   // RF
   reg q_rf_out_en;
@@ -125,6 +129,8 @@ module decoder (
   reg [`DATA_WIDTH] q_lsb_offset_out;
 
   // ROB
+  reg [`ROB_IDX_WIDTH] q_stall_rob_idx_out;
+
   reg q_rob_out_en;
   reg [`ROB_IDX_WIDTH] q_rob_idx_out;
   reg q_rob_ready_out;
@@ -132,14 +138,17 @@ module decoder (
   reg [`REG_IDX_WIDTH] q_rob_dest_out;
   reg [`DATA_WIDTH] q_rob_val_out;
   reg q_rob_jump_out;
-  reg [`ADDR_WIDTH] q_rob_jump_from;
+  reg [`ADDR_WIDTH] q_rob_instr_aout;
   reg [`ADDR_WIDTH] q_rob_not_jump_to;
 
   always @(posedge clk) begin
+    q_rob_idx_out <= rob_idx_rear;  // 
     if (rst_in || roll_back) begin
       q_stall_reset <= 1'b0;
-      q_rob_request_out <= {`ROB_IDX_SIZE{1'b0}};
+      q_stall_rob_idx_out <= {`ROB_IDX_SIZE{1'b0}};
+
       q_rf_out_en <= 1'b0;
+
       q_rs_out_en <= 1'b0;
       q_rs_rob_idx_out <= {`ROB_IDX_SIZE{1'b0}};
       q_rs_op_out <= {`RS_OPCODE_SIZE{1'b0}};
@@ -149,6 +158,7 @@ module decoder (
       q_rs_Vk_out <= 32'b0;
       q_rs_Qk_out_en <= 1'b0;
       q_rs_Qk_out <= {`ROB_IDX_SIZE{1'b0}};
+
       q_lsb_out_en <= 1'b0;
       q_lsb_rw_out <= 1'b0;
       q_lsb_rob_idx_out <= {`ROB_IDX_SIZE{1'b0}};
@@ -160,6 +170,7 @@ module decoder (
       q_lsb_Q_reg_out_en <= 1'b0;
       q_lsb_Q_reg_out <= {`ROB_IDX_SIZE{1'b0}};
       q_lsb_offset_out <= 32'b0;
+
       q_rob_out_en <= 1'b0;
       q_rob_idx_out <= {`ROB_IDX_SIZE{1'b0}};
       q_rob_ready_out <= 1'b0;
@@ -167,13 +178,13 @@ module decoder (
       q_rob_dest_out <= {`ROB_IDX_SIZE{1'b0}};
       q_rob_val_out <= 32'b0;
       q_rob_jump_out <= 1'b0;
-      q_rob_jump_from <= 32'b0;
+      q_rob_instr_aout <= 32'b0;
       q_rob_not_jump_to <= 32'b0;
     end else if (!rdy_in) begin
       // nothing
     end else if (if_in_en) begin
-      q_rob_idx_out <= rob_idx_rear;
       q_rs_rob_idx_out <= rob_idx_rear;
+      q_rob_instr_aout <= if_pc_in;
       case (opcode)
         `OPCODE_R: begin
           q_rob_out_en <= 1'b1;
@@ -186,11 +197,11 @@ module decoder (
           q_lsb_out_en <= 1'b0;
 
           q_rs_Vj_out <= rs1_val;
-          q_rs_Qj_out_en <= rs1_busy;
-          q_rs_Qj_out <= rs1_rob_idx_in;
+          q_rs_Qj_out_en <= rs1_busy_now;
+          q_rs_Qj_out <= rs1_dep_in;
           q_rs_Vk_out <= rs2_val;
-          q_rs_Qk_out_en <= rs2_busy;
-          q_rs_Qk_out <= rs2_rob_idx_in;
+          q_rs_Qk_out_en <= rs2_busy_now;
+          q_rs_Qk_out <= rs2_dep_in;
 
           q_stall_reset <= 1'b0;
 
@@ -226,8 +237,8 @@ module decoder (
           q_lsb_out_en    <= 1'b0;
 
           q_rs_Vj_out     <= rs1_val;
-          q_rs_Qj_out_en  <= rs1_busy;
-          q_rs_Qj_out     <= rs1_rob_idx_in;
+          q_rs_Qj_out_en  <= rs1_busy_now;
+          q_rs_Qj_out     <= rs1_dep_in;
           q_rs_Qk_out_en  <= 1'b0;
 
           q_stall_reset   <= 1'b0;
@@ -289,8 +300,8 @@ module decoder (
           q_lsb_rw_out <= 1'b0;
           q_lsb_rob_idx_out <= rob_idx_rear;
           q_lsb_V_mem_out <= rs1_val;
-          q_lsb_Q_mem_out_en <= rs1_busy;
-          q_lsb_Q_mem_out <= rs1_rob_idx_in;
+          q_lsb_Q_mem_out_en <= rs1_busy_now;
+          q_lsb_Q_mem_out <= rs1_dep_in;
           q_lsb_Q_reg_out_en <= 1'b0;
           q_lsb_offset_out <= {{21{if_instr_in[31]}}, if_instr_in[30:20]};
 
@@ -316,11 +327,11 @@ module decoder (
           q_lsb_rw_out <= 1'b1;
           q_lsb_rob_idx_out <= rob_idx_rear;
           q_lsb_V_mem_out <= rs1_val;
-          q_lsb_Q_mem_out_en <= rs1_busy;
-          q_lsb_Q_mem_out <= rs1_rob_idx_in;
+          q_lsb_Q_mem_out_en <= rs1_busy_now;
+          q_lsb_Q_mem_out <= rs1_dep_in;
           q_lsb_V_reg_out <= rs2_val;
-          q_lsb_Q_reg_out_en <= rs2_busy;
-          q_lsb_Q_reg_out <= rs2_rob_idx_in;
+          q_lsb_Q_reg_out_en <= rs2_busy_now;
+          q_lsb_Q_reg_out <= rs2_dep_in;
           q_lsb_offset_out <= {{21{if_instr_in[31]}}, if_instr_in[30:25], if_instr_in[11:7]};
 
           q_stall_reset <= 1'b0;
@@ -337,23 +348,22 @@ module decoder (
           q_rob_op_out <= `ROB_BR;
           q_rob_dest_out <= rd;
           q_rob_val_out <= if_pc_in + 4;
-          q_rob_jump_out <= if_pred_jump_in;
-          q_rob_jump_from <= if_pc_in;
-          q_rob_not_jump_to <= if_pred_jump_in?if_pc_in+4: if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0};
+          q_rob_jump_out <= jump;
+          q_rob_not_jump_to <= jump ? if_pc_in + 4 : if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0};
 
           q_rf_out_en <= 1'b0;
           q_rs_out_en <= 1'b1;
           q_lsb_out_en <= 1'b0;
 
           q_rs_Vj_out <= rs1_val;
-          q_rs_Qj_out_en <= rs1_busy;
-          q_rs_Qj_out <= rs1_rob_idx_in;
+          q_rs_Qj_out_en <= rs1_busy_now;
+          q_rs_Qj_out <= rs1_dep_in;
           q_rs_Vk_out <= rs2_val;
-          q_rs_Qk_out_en <= rs2_busy;
-          q_rs_Qk_out <= rs2_rob_idx_in;
+          q_rs_Qk_out_en <= rs2_busy_now;
+          q_rs_Qk_out <= rs2_dep_in;
 
           q_stall_reset <= 1'b1;
-          q_new_pc  <= if_pred_jump_in? if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0}:if_pc_in+4;
+          q_new_pc  <= jump ? if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0} : if_pc_in+4;
 
           case (func3)
             `FUNCT3_BEQ:  q_rs_op_out <= `RS_BEQ;
@@ -402,7 +412,7 @@ module decoder (
           q_lsb_out_en <= 1'b0;
 
           q_stall_reset <= 1'b1;
-          q_new_pc  <= if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0};
+          q_new_pc  <= if_pc_in +  {{12{if_instr_in[31]}}, if_instr_in[19:12], if_instr_in[20], if_instr_in[30:21], 1'b0};
         end
         `OPCODE_JALR: begin
           q_rob_out_en <= (rd != 5'b00000);
@@ -417,63 +427,65 @@ module decoder (
 
           if (rs1_busy_now) begin
             q_stall_reset <= 1'b0;
-            q_rob_request_out <= rs1_rob_idx_in;
+            q_stall_rob_idx_out <= rs1_dep_in;
           end else begin
             q_stall_reset <= 1'b1;
-            q_new_pc <= if_pc_in + {{21{if_instr_in[31]}}, if_instr_in[30:20]};
+            q_new_pc <= (if_pc_in + {{21{if_instr_in[31]}}, if_instr_in[30:20]}) & 11111111111111111111111111111110;
           end
         end
       endcase
     end else begin
-      q_rob_out_en <= 1'b0;
-      q_rf_out_en  <= 1'b0;
-      q_rs_out_en  <= 1'b0;
-      q_lsb_out_en <= 1'b0;
+      q_stall_reset <= 1'b0;
+      q_rob_out_en  <= 1'b0;
+      q_rf_out_en   <= 1'b0;
+      q_rs_out_en   <= 1'b0;
+      q_lsb_out_en  <= 1'b0;
     end
   end
 
-
-  assign stall_reset      = q_stall_reset;
-  assign new_pc           = q_new_pc;
-  assign rob_request_out  = q_rob_request_out;
+  // IF
+  assign stall_reset       = q_stall_reset;
+  assign new_pc            = q_new_pc;
 
   // RF
-  assign rf_out_en        = q_rf_out_en;
-  assign rf_rob_idx_out   = q_rob_idx_out;
-  assign rf_dest_out      = q_rob_dest_out;
+  assign rf_out_en         = q_rf_out_en;
+  assign rf_dest_out       = q_rob_dest_out;
+  assign rf_rob_idx_out    = q_rob_idx_out;
 
   // RS
-  assign rs_out_en        = q_rs_out_en;
-  assign rs_rob_idx_out   = q_rs_rob_idx_out;
-  assign rs_op_out        = q_rs_op_out;
-  assign rs_Vj_out        = q_rs_Vj_out;
-  assign rs_Qj_out_en     = q_rs_Qj_out_en;
-  assign rs_Qj_out        = q_rs_Qj_out;
-  assign rs_Vk_out        = q_rs_Vk_out;
-  assign rs_Qk_out_en     = q_rs_Qk_out_en;
-  assign rs_Qk_out        = q_rs_Qk_out;
+  assign rs_out_en         = q_rs_out_en;
+  assign rs_rob_idx_out    = q_rs_rob_idx_out;
+  assign rs_op_out         = q_rs_op_out;
+  assign rs_Vj_out         = q_rs_Vj_out;
+  assign rs_Qj_out_en      = q_rs_Qj_out_en;
+  assign rs_Qj_out         = q_rs_Qj_out;
+  assign rs_Vk_out         = q_rs_Vk_out;
+  assign rs_Qk_out_en      = q_rs_Qk_out_en;
+  assign rs_Qk_out         = q_rs_Qk_out;
 
   // LSB
-  assign lsb_out_en       = q_lsb_out_en;
-  assign lsb_rw_out       = q_lsb_rw_out;
-  assign lsb_rob_idx_out  = q_lsb_rob_idx_out;
-  assign lsb_op_out       = q_lsb_op_out;
-  assign lsb_V_mem_out    = q_lsb_V_mem_out;
-  assign lsb_Q_mem_out_en = q_lsb_Q_mem_out_en;
-  assign lsb_Q_mem_out    = q_lsb_Q_mem_out;
-  assign lsb_V_reg_out    = q_lsb_V_reg_out;
-  assign lsb_Q_reg_out_en = q_lsb_Q_reg_out_en;
-  assign lsb_Q_reg_out    = q_lsb_Q_reg_out;
-  assign lsb_offset_out   = q_lsb_offset_out;
+  assign lsb_out_en        = q_lsb_out_en;
+  assign lsb_rw_out        = q_lsb_rw_out;
+  assign lsb_rob_idx_out   = q_lsb_rob_idx_out;
+  assign lsb_op_out        = q_lsb_op_out;
+  assign lsb_V_mem_out     = q_lsb_V_mem_out;
+  assign lsb_Q_mem_out_en  = q_lsb_Q_mem_out_en;
+  assign lsb_Q_mem_out     = q_lsb_Q_mem_out;
+  assign lsb_V_reg_out     = q_lsb_V_reg_out;
+  assign lsb_Q_reg_out_en  = q_lsb_Q_reg_out_en;
+  assign lsb_Q_reg_out     = q_lsb_Q_reg_out;
+  assign lsb_offset_out    = q_lsb_offset_out;
 
   // ROB
-  assign rob_out_en       = q_rob_out_en;
-  assign rob_idx_out      = q_rob_idx_out;
-  assign rob_ready_out    = q_rob_ready_out;
-  assign rob_op_out       = q_rob_op_out;
-  assign rob_dest_out     = q_rob_dest_out;
-  assign rob_val_out      = q_rob_val_out;
-  assign rob_jump_out     = q_rob_jump_out;
-  assign rob_jump_from    = q_rob_jump_from;
-  assign rob_not_jump_to      = q_rob_not_jump_to;
+  assign stall_rob_idx_out = q_stall_rob_idx_out;
+
+  assign rob_out_en        = q_rob_out_en;
+  assign rob_idx_out       = q_rob_idx_out;
+  assign rob_ready_out     = q_rob_ready_out;
+  assign rob_op_out        = q_rob_op_out;
+  assign rob_dest_out      = q_rob_dest_out;
+  assign rob_val_out       = q_rob_val_out;
+  assign rob_jump_out      = q_rob_jump_out;
+  assign rob_instr_aout    = q_rob_instr_aout;
+  assign rob_not_jump_to   = q_rob_not_jump_to;
 endmodule
