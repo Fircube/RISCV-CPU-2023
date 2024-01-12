@@ -1,5 +1,7 @@
 // RISCV32I CPU top module
 // port modification allowed for debugging purposes
+
+// `include "param.v"
 `include "./riscv/src/mem_ctrl.v"
 `include "./riscv/src/ifetch.v"
 `include "./riscv/src/decoder.v"
@@ -39,8 +41,10 @@ module cpu (
 
     // rob wrong prediction signal
     wire roll_back;
+    wire [`ADDR_WIDTH] corr_pc;
 
-    // cdb
+
+    // CDB
     // rs
     wire rs_full;
     wire                  rs2cdb_en;
@@ -53,7 +57,7 @@ module cpu (
     wire [   `DATA_WIDTH] lsb2cdb_val;
     // rob
     wire rob_full;
-    wire [`ADDR_WIDTH] corr_pc;
+
 
     // mc & if
     wire                mc2if_instr_en;

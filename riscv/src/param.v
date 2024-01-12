@@ -5,6 +5,7 @@
 
 
 // ICache
+// direct mapped
 // 16 Blocks * 16 Instr per block * 4 Bype per Instr
 `define ICACHE_SIZE 16
 `define ICACHE_BLK_INSTR 16

@@ -26,8 +26,8 @@
 ***************************************************************************************************/
 
 // modification allowed for debugging purposes
-`include "./riscv/src/common/fifo/fifo.v"
-`include "./riscv/src/common/uart/uart.v"
+// `include "./riscv/src/common/fifo/fifo.v"
+// `include "./riscv/src/common/uart/uart.v"
 
 module hci #(
     parameter SYS_CLK_FREQ = 100000000,

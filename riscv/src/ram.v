@@ -1,5 +1,5 @@
 // implements 128KB of on-board RAM
-`include "./riscv/src/common/block_ram/block_ram.v"
+// `include "./riscv/src/common/block_ram/block_ram.v"
 
 module ram #(
     parameter ADDR_WIDTH = 17

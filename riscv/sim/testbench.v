@@ -1,8 +1,6 @@
 // testbench top module file
 // for simulation only
 
-`include "./riscv/src/riscv_top.v"
-
 `timescale 1ns/1ps
 module testbench;
 
@@ -30,7 +28,7 @@ end
 initial begin
      $dumpfile("test.vcd");
      $dumpvars(0, testbench);
-     #300000000 $finish;
+     #300000 $finish;
 end
 
 endmodule
