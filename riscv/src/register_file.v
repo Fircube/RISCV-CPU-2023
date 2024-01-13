@@ -1,4 +1,5 @@
-`include "./riscv/src/param.v"
+`include "param.v"
+// `include "./riscv/src/param.v"
 
 module regFile (
     input wire clk,     // system clock signal
@@ -7,43 +8,63 @@ module regFile (
 
     input wire roll_back,  // wrong prediction signal
 
+    input  wire [`REG_IDX_WIDTH] rs1,
+    input  wire [`REG_IDX_WIDTH] rs2,
+    output wire [`ROB_IDX_WIDTH] rs1_dep_out,
+    output wire [`ROB_IDX_WIDTH] rs2_dep_out,
+
     // decoder
     input wire                  de_in_en,
-    input wire [`ROB_IDX_WIDTH] de_rob_idx_in,
     input wire [`REG_IDX_WIDTH] de_dest_in,
+    input wire [`ROB_IDX_WIDTH] de_rob_idx_in,
 
-    input  wire [`REG_IDX_WIDTH] rs1,
-    output wire                  rs1_busy,
-    output wire [`ROB_IDX_WIDTH] rs1_rob_idx_out,
-    output wire [   `DATA_WIDTH] rs1_val_out,
-    input  wire [`REG_IDX_WIDTH] rs2,
-    output wire                  rs2_busy,
-    output wire [`ROB_IDX_WIDTH] rs2_rob_idx_out,
-    output wire [   `DATA_WIDTH] rs2_val_out,
+    output wire               de_rs1_busy_out,
+    output wire [`DATA_WIDTH] de_rs1_val_out,
+    output wire               de_rs2_busy_out,
+    output wire [`DATA_WIDTH] de_rs2_val_out,
 
     // rob
     input wire                  rob_in_en,
     input wire [`ROB_IDX_WIDTH] rob_idx_in,
     input wire [`REG_IDX_WIDTH] rob_dest_in,
-    input wire [   `DATA_WIDTH] rob_val_in
+    input wire [   `DATA_WIDTH] rob_val_in,
 
+    input wire               rob_rs1_busy_in,
+    input wire [`DATA_WIDTH] rob_rs1_val_in,
+    input wire               rob_rs2_busy_in,
+    input wire [`DATA_WIDTH] rob_rs2_val_in
 );
 
-  // inner
-  reg                      busy   [`REG_WIDTH];
-  reg     [`ROB_IDX_WIDTH] rob_idx[`REG_WIDTH];
-  reg     [   `DATA_WIDTH] value  [`REG_WIDTH];
+  // internal storage
+  reg busy[`REG_WIDTH];
+  reg [`ROB_IDX_WIDTH] dep[`REG_WIDTH];
+  reg [`DATA_WIDTH] value[`REG_WIDTH];
 
-  reg     [`REG_IDX_WIDTH] q_rs1;
-  reg     [`REG_IDX_WIDTH] q_rs2;
+  // Interface-related reg
+  reg [`REG_IDX_WIDTH] q_rs1;
+  reg [`REG_IDX_WIDTH] q_rs2;
 
-  integer                  i;
+  wire rs1_issue = de_in_en && (de_dest_in != 5'b00000) && de_dest_in == q_rs1;
+  wire rs2_issue = de_in_en && (de_dest_in != 5'b00000) && de_dest_in == q_rs2;
+  wire rs1_dep_commit = rob_in_en && (rob_dest_in != 5'b00000) && rob_dest_in == q_rs1 && busy[q_rs1] && rob_idx_in == dep[q_rs1] ;
+  wire rs2_dep_commit = rob_in_en && (rob_dest_in != 5'b00000) && rob_dest_in == q_rs2 && busy[q_rs2] && rob_idx_in == dep[q_rs2] ;
+  
+  assign rs1_dep_out = rs1_issue ? de_rob_idx_in : dep[q_rs1];
+  assign rs2_dep_out = rs2_issue ? de_rob_idx_in : dep[q_rs2];
+  
+  // 先commit再issue
+  assign de_rs1_busy_out = rob_rs1_busy_in & (rs1_issue ? 1'b1 : rs1_dep_commit ? 1'b0 : busy[q_rs1]);
+  assign de_rs1_val_out = rs1_issue ? rob_rs1_val_in : rs1_dep_commit ? rob_val_in : busy[q_rs1] ? rob_rs1_val_in : value[q_rs1];
+  assign de_rs2_busy_out = rob_rs2_busy_in & (rs2_issue ? 1'b1 : rs2_dep_commit ? 1'b0 : busy[q_rs2]);
+  assign de_rs2_val_out = rs2_issue ? rob_rs2_val_in : rs2_dep_commit ? rob_val_in : busy[q_rs2] ? rob_rs2_val_in : value[q_rs2];
+
+  integer i;
   always @(posedge clk) begin
     if (rst_in) begin
       for (i = 0; i < 32; i = i + 1) begin
-        value[i]   <= 32'b0;
         busy[i]    <= 1'b0;
-        rob_idx[i] <= {`ROB_IDX_SIZE{1'b0}};
+        dep[i] <= {`ROB_IDX_SIZE{1'b0}};
+        value[i]   <= 32'b0;
       end
       q_rs1 <= {`REG_SIZE{1'b0}};
       q_rs2 <= {`REG_SIZE{1'b0}};
@@ -58,26 +79,14 @@ module regFile (
       q_rs2 <= rs2;
       if (de_in_en && de_dest_in != 5'b00000) begin
         busy[de_dest_in] <= 1'b1;
-        rob_idx[de_dest_in] <= de_rob_idx_in;
+        dep[de_dest_in] <= de_rob_idx_in;
       end
       if (rob_in_en && rob_dest_in != 5'b00000) begin // 注意先后次序！ 此处尝试先commit再issue
-        if (rob_idx_in == rob_idx[rob_dest_in] && !((de_in_en && de_dest_in == rob_dest_in))) begin
+        if (rob_idx_in == dep[rob_dest_in] && !(de_in_en && de_dest_in == rob_dest_in)) begin
           busy[rob_dest_in] <= 1'b0;
         end
         value[rob_dest_in] <= rob_val_in;
       end
     end
   end
-
-  // ?
-  wire rs1_commit = (rob_in_en && rob_dest_in != 5'b00000 && rob_dest_in == q_rs1 && busy[q_rs1] && rob_idx_in == rob_idx[q_rs1]) ;
-  wire rs2_commit = (rob_in_en && rob_dest_in != 5'b00000 && rob_dest_in == q_rs2 && busy[q_rs2] && rob_idx_in == rob_idx[q_rs2]) ;
-  assign rs1_busy        = rs1_commit ? 1'b0 : busy[q_rs1];
-  assign rs1_rob_idx_out = rs1_commit ? {`ROB_IDX_SIZE{1'b0}} : rob_idx[q_rs1];
-  assign rs1_val_out     = rs1_commit ? rob_val_in : value[q_rs1];
-  assign rs2_busy        = rs2_commit ? 1'b0 : busy[q_rs2];
-  assign rs2_rob_idx_out = rs2_commit ? {`ROB_IDX_SIZE{1'b0}} : rob_idx[q_rs2];
-  assign rs2_val_out     = rs2_commit ? rob_val_in : value[q_rs2];
-
-
 endmodule
