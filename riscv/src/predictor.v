@@ -1,7 +1,9 @@
-// `include "param.v"
-`include "./riscv/src/param.v"
+`include "param.v"
+// `include "./riscv/src/param.v"
 
-module predictor (
+module predictor #(
+    parameter BHT_SIZE = 256
+)(
         input wire clk,     // system clock signal
         input wire rst_in,  // reset signal
         input wire rdy_in,  // ready signal, pause cpu when low
@@ -12,7 +14,7 @@ module predictor (
         output wire                   jump         // jump signal
     );
 
-    reg [1:0]             bht[`BHT_WIDTH];
+    reg [1:0]             bht[BHT_SIZE-1:0];
 
     // wire [`BHT_WIDTH] pre_idx    = mem_ain[`BHT_IDX_RANGE]; // ?
     reg [`BHT_WIDTH] pre_idx;
@@ -25,7 +27,7 @@ module predictor (
     always @(posedge clk) begin
         if (rst_in) begin
             pre_idx = 0;
-            for (i = 0; i < `BHT_SIZE; i = i + 1) begin
+            for (i = 0; i < BHT_SIZE; i = i + 1) begin
                 bht[i] <= 2'b01;
             end
         end

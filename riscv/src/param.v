@@ -7,9 +7,9 @@
 // ICache
 // direct mapped
 // 16 Blocks * 16 Instr per block * 4 Bype per Instr
-`define ICACHE_SIZE 16
-`define ICACHE_BLK_INSTR 16
-`define ICACHE_BLK_SIZE 64
+// `define ICACHE_SIZE 16
+// `define ICACHE_BLK_INSTR 16
+// `define ICACHE_BLK_SIZE 64
 `define ICACHE_BLK_WIDTH 511:0
 // 0x0 - 0x20000 
 `define ICACHE_TAG_RANGE 31:10 
@@ -152,7 +152,7 @@
 `define REG_WIDTH 4:0
 
 // predictor
-`define BHT_SIZE 256
+// `define BHT_SIZE 256
 `define BHT_IDX_RANGE 9:2
 `define BHT_IDX_WIDTH 7:0
 `define BHT_WIDTH 255:0

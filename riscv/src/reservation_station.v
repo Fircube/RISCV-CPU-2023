@@ -2,7 +2,9 @@
 // `include "./riscv/src/param.v"
 
 // alu included
-module rs (
+module rs #(
+  parameter RS_SIZE = 16
+)(
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
     input wire rdy_in,  // ready signal, pause cpu when low
@@ -64,20 +66,20 @@ module rs (
   // alu end
 
   // internal storage
-  reg busy[`RS_WIDTH];
-  reg [`RS_OPCODE_WIDTH] op[`RS_WIDTH];
-  reg [`DATA_WIDTH] Vj[`RS_WIDTH];
-  reg [`ROB_IDX_WIDTH] Qj[`RS_WIDTH];
-  reg [`DATA_WIDTH] Vk[`RS_WIDTH];
-  reg [`ROB_IDX_WIDTH] Qk[`RS_WIDTH];
-  reg [`ROB_IDX_WIDTH] rob_idx[`RS_WIDTH];
+  reg busy[RS_SIZE-1:0];
+  reg [`RS_OPCODE_WIDTH] op[RS_SIZE-1:0];
+  reg [`DATA_WIDTH] Vj[RS_SIZE-1:0];
+  reg [`ROB_IDX_WIDTH] Qj[RS_SIZE-1:0];
+  reg [`DATA_WIDTH] Vk[RS_SIZE-1:0];
+  reg [`ROB_IDX_WIDTH] Qk[RS_SIZE-1:0];
+  reg [`ROB_IDX_WIDTH] rob_idx[RS_SIZE-1:0];
 
-  reg [`RS_WIDTH] Qj_en;
-  reg [`RS_WIDTH] Qk_en;
-  wire [`RS_WIDTH] ready = ~Qj_en & ~Qk_en;
+  reg [RS_SIZE-1:0] Qj_en;
+  reg [RS_SIZE-1:0] Qk_en;
+  wire [RS_SIZE-1:0] ready = ~Qj_en & ~Qk_en;
 
-  reg [`RS_WIDTH] busy_num;
-  wire [`RS_WIDTH] busy_num_nxt = busy_num + (de_in_en ? 1'b1 : 1'b0) - ((ready!=0) ? 1'b1 : 1'b0);
+  reg [RS_SIZE-1:0] busy_num;
+  wire [RS_SIZE-1:0] busy_num_nxt = busy_num + (de_in_en ? 1'b1 : 1'b0) - ((ready!=0) ? 1'b1 : 1'b0);
   assign rs_full = (busy_num >= `RS_SIZE);
 
   reg full;
@@ -98,8 +100,8 @@ module rs (
 
   wire de_Qj_en_updated = de_Qj_in_en && !lsb_j_updated && !alu_j_updated && !cdb_j_updated;
   wire de_Qk_en_updated = de_Qk_in_en && !lsb_k_updated && !alu_k_updated && !cdb_k_updated;
-  wire de_Vj_updated = de_Qj_in_en ? lsb_j_updated ? lsb_val_in : alu_j_updated ? alu_result : cdb_j_updated ? rs2cdb_val_out : 32'b0 : de_Vj_in;
-  wire de_Vk_updated = de_Qk_in_en ? lsb_k_updated ? lsb_val_in : alu_k_updated ? alu_result : cdb_k_updated ? rs2cdb_val_out : 32'b0 : de_Vk_in;
+  wire [`DATA_WIDTH]de_Vj_updated = de_Qj_in_en ? lsb_j_updated ? lsb_val_in : alu_j_updated ? alu_result : cdb_j_updated ? rs2cdb_val_out : 32'b0 : de_Vj_in;
+  wire [`DATA_WIDTH]de_Vk_updated = de_Qk_in_en ? lsb_k_updated ? lsb_val_in : alu_k_updated ? alu_result : cdb_k_updated ? rs2cdb_val_out : 32'b0 : de_Vk_in;
 
   // Interface-related reg
   reg q_rs2cdb_out_en;

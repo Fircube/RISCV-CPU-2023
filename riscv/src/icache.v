@@ -1,9 +1,12 @@
-// `include "param.v"
-`include "./riscv/src/param.v"
+`include "param.v"
+// `include "./riscv/src/param.v"
 
 // 若 hit 即时刻返回 instrction
 // ram 输入 过一个周期存入 icache
-module iCache (
+module iCache #(
+  parameter ICACHE_SIZE = 16,
+  parameter ICACHE_BLK_INSTR = 16
+  )(
     input wire clk,    // system clock signal
     input wire rst_in, // reset signal
 
@@ -19,9 +22,9 @@ module iCache (
 );
 
   // internal storage
-  reg                     cacheValid[`ICACHE_SIZE-1:0];
-  reg [`ICACHE_TAG_WIDTH] cacheTag[`ICACHE_SIZE-1:0];
-  reg [`ICACHE_BLK_WIDTH] cacheData[`ICACHE_SIZE-1:0];
+  reg                     cacheValid[ICACHE_SIZE-1:0];
+  reg [`ICACHE_TAG_WIDTH] cacheTag[ICACHE_SIZE-1:0];
+  reg [`ICACHE_BLK_WIDTH] cacheData[ICACHE_SIZE-1:0];
 
   // utensils
   wire [`ICACHE_TAG_WIDTH]    pc_tag    = if_ain[`ICACHE_TAG_RANGE];
@@ -33,12 +36,12 @@ module iCache (
   wire [`ICACHE_IDX_WIDTH] mem_pc_idx = mem_ain[`ICACHE_IDX_RANGE];
 
   wire [`ICACHE_BLK_WIDTH] cur_block = cacheData[pc_idx];
-  wire [`INSTR_WIDTH] cur_instrs[`ICACHE_BLK_INSTR-1:0];
+  wire [`INSTR_WIDTH] cur_instrs[ICACHE_BLK_INSTR-1:0];
   wire [`INSTR_WIDTH] cur_instr = cur_instrs[pc_offset];
 
   genvar _i;
   generate
-    for (_i = 0; _i < `ICACHE_BLK_INSTR; _i = _i + 1) begin
+    for (_i = 0; _i < ICACHE_BLK_INSTR; _i = _i + 1) begin
       assign cur_instrs[_i] = cur_block[_i*32+31:_i*32];
     end
   endgenerate
@@ -50,7 +53,7 @@ module iCache (
 
   always @(posedge clk) begin
     if (rst_in) begin
-      for (i = 0; i < `ICACHE_SIZE; i = i + 1) begin
+      for (i = 0; i < ICACHE_SIZE; i = i + 1) begin
         cacheValid[i] <= 0;
         cacheTag[i]   <= 0;
         cacheData[i]  <= 0;

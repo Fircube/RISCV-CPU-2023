@@ -1,8 +1,10 @@
-// `include "param.v"
-`include "./riscv/src/param.v"
-`include "./riscv/src/icache.v"
+`include "param.v"
+// `include "./riscv/src/param.v"
+// `include "./riscv/src/icache.v"
 
-module memCtrl (
+module memCtrl #(
+  parameter ICACHE_BLK_SIZE = 64
+)(
     input wire clk,       // system clock signal
     input wire rst_in,    // reset signal
     input wire rdy_in,    // ready signal, pause cpu when low
@@ -52,11 +54,11 @@ module memCtrl (
   reg                       mem2icache_in_en;
   reg  [      `ADDR_WIDTH]  mem2icache_ain;
   wire [`ICACHE_BLK_WIDTH]  mem2icache_din;
-  reg  [              7:0 ] mem2icache_din_  [`ICACHE_BLK_SIZE-1:0];
+  reg  [              7:0 ] mem2icache_din_  [ICACHE_BLK_SIZE-1:0];
 
   genvar _i;
   generate
-    for (_i = 0; _i < `ICACHE_BLK_INSTR; _i = _i + 1) begin
+    for (_i = 0; _i < ICACHE_BLK_SIZE; _i = _i + 1) begin
       assign mem2icache_din[_i*8+7:_i*8] = mem2icache_din_[_i];
     end
   endgenerate
@@ -72,7 +74,7 @@ module memCtrl (
       .if_instr_out   (if_instr_out)
   );
 
-
+  integer i;
   always @(posedge clk) begin
     if (rst_in) begin
       status <= IDLE;
@@ -80,6 +82,7 @@ module memCtrl (
       q_mem_dout <= 0;
       q_mem_aout <= 0;
       q_lsb_dout_en <= 0;
+      q_lsb_dout <= 0;
       q_lsb_w_done <= 0;
       mem2icache_in_en <= 0;
     end else if (!rdy_in) begin
@@ -94,21 +97,21 @@ module memCtrl (
             q_lsb_w_done <= 0;
           end else if (!roll_back) begin
             if (lsb_d_type != 2'b00) begin  // load & store first
-                  if (lsb_rw) begin
-                    // synchronize
-                    status  <= STORE;
-                    store_a <= lsb_ain;
-                  end else begin
-                    status <= LOAD;
-                    q_mem_aout <= lsb_ain;
-                    q_lsb_dout <= 0;
-                  end
-                  stage <= 0;
-                  case(lsb_d_type)
-                    2'b01: steps <= 1;
-                    2'b10: steps <= 2;
-                    2'b11: steps <= 4;
-                  endcase
+              if (lsb_rw) begin
+                // synchronize
+                status  <= STORE;
+                store_a <= lsb_ain;
+              end else begin
+                status <= LOAD;
+                q_mem_aout <= lsb_ain;
+                q_lsb_dout <= 0;
+              end
+              stage <= 0;
+              case (lsb_d_type)
+                2'b01: steps <= 1;
+                2'b10: steps <= 2;
+                2'b11: steps <= 4;
+              endcase
             end else if (!if_instr_out_en) begin
               status <= IF;
               stage <= 0;
@@ -179,7 +182,7 @@ module memCtrl (
               stage <= 0;
               q_mem_rw <= 0;
               q_mem_aout <= 0;
-              q_lsb_dout_en <= 1;
+              q_lsb_w_done <= 1;
             end else begin
               stage <= stage + 1;
             end

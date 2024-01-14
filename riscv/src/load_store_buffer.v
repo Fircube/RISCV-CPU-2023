@@ -2,7 +2,9 @@
 // `include "./riscv/src/param.v"
 
 // FIFO structure
-module lsb (
+module lsb #(
+  parameter LSB_SIZE = 16
+)(
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
     input wire rdy_in,  // commit signal, pause cpu when low
@@ -51,28 +53,27 @@ module lsb (
 
 
   // internal storage
-  reg [`ROB_IDX_WIDTH] rob_idx[`LSB_WIDTH];
-  reg busy[`LSB_WIDTH];
-  reg ls[`LSB_WIDTH];  // store 1
-  reg [`LSB_OPCODE_WIDTH] op[`LSB_WIDTH];
-  reg [`ROB_IDX_WIDTH] Qj[`LSB_WIDTH];
-  reg [`DATA_WIDTH] Vj[`LSB_WIDTH];
-  reg [`ROB_IDX_WIDTH] Qk[`LSB_WIDTH];
-  reg [`DATA_WIDTH] Vk[`LSB_WIDTH];
-  reg [`DATA_WIDTH] offset[`LSB_WIDTH];
-  reg commit[`LSB_WIDTH];
+  reg [`ROB_IDX_WIDTH] rob_idx[LSB_SIZE-1:0];
+  reg busy[LSB_SIZE-1:0];
+  reg ls[LSB_SIZE-1:0];  // store 1
+  reg [`LSB_OPCODE_WIDTH] op[LSB_SIZE-1:0];
+  reg [`ROB_IDX_WIDTH] Qj[LSB_SIZE-1:0];
+  reg [`DATA_WIDTH] Vj[LSB_SIZE-1:0];
+  reg [`ROB_IDX_WIDTH] Qk[LSB_SIZE-1:0];
+  reg [`DATA_WIDTH] Vk[LSB_SIZE-1:0];
+  reg [`DATA_WIDTH] offset[LSB_SIZE-1:0];
+  reg commit[LSB_SIZE-1:0];
 
-  reg [`LSB_WIDTH] Qj_en;
-  reg [`LSB_WIDTH] Qk_en;
-  wire [`LSB_WIDTH] ready = ~Qj_en & ~Qk_en;
+  reg [LSB_SIZE-1:0] Qj_en;
+  reg [LSB_SIZE-1:0] Qk_en;
+  wire [LSB_SIZE-1:0] ready = ~Qj_en & ~Qk_en;
 
   // FIFO
   reg [`LSB_IDX_WIDTH] front;
   reg [`LSB_IDX_WIDTH] rear;
   reg [4:0] last;
   wire empty = (front == rear);
-  wire head_ready = busy[front] && !ready[front] && (commit[front] || (!ls[front] && !is_io));
-
+  wire head_ready = busy[front] && ready[front] && (commit[front] || (!ls[front] && !is_io));
   // wire pop = mem_din_en && status == WAIT_MC;
   // wire [`LSB_IDX_WIDTH] nxt_front = front + pop;
   // wire [`LSB_IDX_WIDTH] nxt_rear = rear + de_in_en; 

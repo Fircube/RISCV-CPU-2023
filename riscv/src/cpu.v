@@ -45,8 +45,8 @@ module cpu (
 
 
   // CDB
-  wire [`REG_IDX_WIDTH]     rs1 = if2mc_a[`RS1_RANGE];
-  wire [`REG_IDX_WIDTH]     rs2 = if2mc_a[`RS2_RANGE];
+  wire [`REG_IDX_WIDTH]     rs1 = mc2if_instr[`RS1_RANGE];
+  wire [`REG_IDX_WIDTH]     rs2 = mc2if_instr[`RS2_RANGE];
   // rs
   wire                      rs_full;
   wire                      rs2cdb_en;
@@ -184,7 +184,8 @@ module cpu (
       .lsb_ain(lsb2mc_a),
       .lsb_din(lsb2mc_d),
       .lsb_dout_en(mc2lsb_d_en),
-      .lsb_dout(mc2lsb_d)
+      .lsb_dout(mc2lsb_d),
+      .lsb_w_done(mc2lsb_w_done)
   );
 
   iFetch Ifetch (
