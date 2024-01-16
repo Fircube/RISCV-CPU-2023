@@ -92,7 +92,8 @@ module rob #(
   reg [      `ADDR_WIDTH] not_jump_to         [ROB_SIZE-1:0];
 
   // FIFO
-  reg [`ROB_IDX_WIDTH] front, rear;
+  reg [`ROB_IDX_WIDTH] front;
+  reg [`ROB_IDX_WIDTH] rear;
   wire empty = (front == rear);
 
   // wire commit = !empty && ready[front];
@@ -100,7 +101,8 @@ module rob #(
   // wire [`ROB_IDX_WIDTH] nxt_rear = rear + de_in_en;
   // wire nxt_empty = (nxt_front == nxt_rear && (empty || commit && !de_in_en));
   // assign rob_full = (nxt_front == nxt_rear && !nxt_empty);
-  assign rob_full = (front == rear + 1);
+  // assign rob_full = (front == rear + 1);
+  assign rob_full = (front == rear + 1'd1) || (front == rear + 2'd2) || (front == rear + 2'd3);
 
   wire rs_stall_updated = rs_in_en && (rs_rob_idx_in == stall_rob_idx_in);
   wire lsb_stall_updated = lsb_in_en && (lsb_rob_idx_in == stall_rob_idx_in);
@@ -117,7 +119,7 @@ module rob #(
 
   assign rs1_busy_out = !(busy[rs1_dep_in] && ready[rs1_dep_in]) && !rs_rs1_busy_updated && !lsb_rs1_busy_updated && !de_rs1_busy_updated;
   assign rs1_val_out  = rs_rs1_busy_updated ? rs_val_in : lsb_rs1_busy_updated ? lsb_val_in : de_rs1_busy_updated ? de_val_in : val[rs1_dep_in];
-  assign rs2_busy_out = !(busy[rs1_dep_in] && ready[rs1_dep_in]) && !rs_rs2_busy_updated && !lsb_rs2_busy_updated && !de_rs2_busy_updated;
+  assign rs2_busy_out = !(busy[rs2_dep_in] && ready[rs2_dep_in]) && !rs_rs2_busy_updated && !lsb_rs2_busy_updated && !de_rs2_busy_updated;
   assign rs2_val_out  = rs_rs2_busy_updated ? rs_val_in : lsb_rs2_busy_updated ? lsb_val_in : de_rs2_busy_updated ? de_val_in : val[rs2_dep_in];
 
   wire head_ready = ready[front];
@@ -177,7 +179,7 @@ module rob #(
           val[de_rob_idx_in]         <= de_val_in;
           instr_a[de_rob_idx_in]     <= de_instr_ain;
           not_jump_to[de_rob_idx_in] <= de_not_jump_to;
-          rear                       <= de_rob_idx_in + 1;
+          rear                       <= (de_rob_idx_in + 1'b1);
         end
 
         // rs
@@ -197,6 +199,11 @@ module rob #(
           q_rob_committed_en  <= 1'b1;
           q_rob_committed_idx <= front;
           q_rf_out_en         <= (op[front] == `ROB_REG) && ready[front];
+
+          // `ifdef DEBUG 
+          //   $display("rob committed: %d", q_rob_committed_idx);
+          // `endif 
+
           case (op[front])
             `ROB_REG: begin
               if (ready[front]) begin
@@ -204,7 +211,7 @@ module rob #(
                 busy[front] <= 1'b0;
                 q_rf_rob_idx_out <= front;
                 q_rf_dest_out <= dest[front];
-                q_rf_val_out <= val[front];
+                q_rf_val_out <= head_val;
               end
             end
             `ROB_BR: begin  // branch
@@ -212,8 +219,8 @@ module rob #(
                 front <= front + 1'b1;
                 busy[front] <= 1'b0;
                 q_pre_aout <= instr_a[front];
-                q_rob_jump <= val[front][0];
-                if (jump[front] != val[front][0]) begin
+                q_rob_jump <= head_val[0];
+                if (jump[front] != head_val[0]) begin
                   q_roll_back <= 1'b1;
                   q_corr_pc   <= not_jump_to[front];
                   front       <= {`ROB_IDX_SIZE{1'b0}};
@@ -241,9 +248,7 @@ module rob #(
   assign roll_back         = q_roll_back;
   assign corr_pc           = q_corr_pc;
 
-  assign rob_idx_nxt       = de_in_en ? rear + 1 : rear;
-
-
+  assign rob_idx_nxt       = de_in_en ? (rear + 1'd1) : rear;
 
   assign pre_out_en        = q_pre_out_en;
   assign pre_aout          = q_pre_aout;

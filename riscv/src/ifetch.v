@@ -58,32 +58,11 @@ module iFetch (
         if (stall_reset) begin
           stall <= 1'b0;
           pc <= new_pc;
-          // q_de_out_en <= 1'b1;
-          // q_de_pc_out <= new_pc;
-          // q_de_instr_out <= mc_instr_in;
-          // case (mc_instr_in[`OPCODE_RANGE])
-          //   `OPCODE_B: begin
-          //     stall <= 1'b1;  // branch
-          //     pc <= new_pc;
-          //   end
-          //   `OPCODE_JAL: begin
-          //     stall <= 1'b1;  // JAL
-          //     pc <= new_pc;
-          //   end
-          //   `OPCODE_JALR: begin
-          //     stall <= 1'b1;  // JALR
-          //     pc <= new_pc;
-          //   end
-          //   default: begin
-          //     stall <= 1'b0;
-          //     pc <= new_pc + 4;  // Others
-          //   end
-          // endcase
         end else if (rob_ready_in) begin
           // To speed up, decode with rob data directly
           stall <= 1'b0;
           q_de_out_en <= 1'b1;
-          pc <= (rob_val_in + {{21{pc[31]}}, pc[30:20]}) & 32'b11111111111111111111111111111110;
+          pc <= (rob_val_in + {{21{q_de_instr_out[31]}}, q_de_instr_out[30:20]}) & 32'b11111111111111111111111111111110;
         end else begin
           stall <= 1'b1;
           q_de_out_en <= 1'b0;

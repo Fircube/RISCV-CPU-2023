@@ -18,11 +18,9 @@ module decoder (
     input wire jump,  // prediction jump signal from predictor
 
     // Register File
-    // output wire [`REG_IDX_WIDTH] rs1,
     input wire                  rs1_busy,
     input wire [`ROB_IDX_WIDTH] rs1_dep_in,
     input wire [   `DATA_WIDTH] rs1_val_in,
-    // output wire [`REG_IDX_WIDTH] rs2,
     input wire                  rs2_busy,
     input wire [`ROB_IDX_WIDTH] rs2_dep_in,
     input wire [   `DATA_WIDTH] rs2_val_in,
@@ -140,7 +138,7 @@ module decoder (
   reg [`ADDR_WIDTH] q_rob_not_jump_to;
 
   always @(posedge clk) begin
-    q_rob_idx_out <= rob_idx_nxt;  // 
+    q_rob_idx_out <= rob_idx_nxt;
     if (rst_in || roll_back) begin
       q_stall_reset <= 1'b0;
       q_stall_rob_idx_out <= {`ROB_IDX_SIZE{1'b0}};
@@ -173,7 +171,7 @@ module decoder (
       q_rob_idx_out <= {`ROB_IDX_SIZE{1'b0}};
       q_rob_ready_out <= 1'b0;
       q_rob_op_out <= {`ROB_OPCODE_SIZE{1'b0}};
-      q_rob_dest_out <= {`ROB_IDX_SIZE{1'b0}};
+      q_rob_dest_out <= 5'b0;
       q_rob_val_out <= 32'b0;
       q_rob_jump_out <= 1'b0;
       q_rob_instr_aout <= 32'b0;
@@ -289,7 +287,7 @@ module decoder (
           q_rob_ready_out <= 1'b0;
           q_rob_op_out <= `ROB_REG;
           q_rob_dest_out <= rd;
-          q_rob_val_out <= {if_instr_in[31:12], 12'b0};
+          // q_rob_val_out <= {if_instr_in[31:12], 12'b0};
 
           q_rf_out_en <= 1'b1;
           q_rs_out_en <= 1'b0;
@@ -344,8 +342,8 @@ module decoder (
           q_rob_out_en <= 1'b1;
           q_rob_ready_out <= 1'b0;
           q_rob_op_out <= `ROB_BR;
-          q_rob_dest_out <= rd;
-          q_rob_val_out <= if_pc_in + 4;
+          // q_rob_dest_out <= rd;
+          // q_rob_val_out <= if_pc_in + 4;
           q_rob_jump_out <= jump;
           q_rob_not_jump_to <= jump ? if_pc_in + 4 : if_pc_in + {{20{if_instr_in[31]}}, if_instr_in[7], if_instr_in[30:25],if_instr_in[11:8], 1'b0};
 

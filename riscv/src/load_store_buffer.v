@@ -3,8 +3,8 @@
 
 // FIFO structure
 module lsb #(
-  parameter LSB_SIZE = 16
-)(
+    parameter LSB_SIZE = 16
+) (
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
     input wire rdy_in,  // commit signal, pause cpu when low
@@ -71,16 +71,20 @@ module lsb #(
   // FIFO
   reg [`LSB_IDX_WIDTH] front;
   reg [`LSB_IDX_WIDTH] rear;
-  reg [4:0] last;
+  // reg [4:0] last;
   wire empty = (front == rear);
   wire head_ready = busy[front] && ready[front] && (commit[front] || (!ls[front] && !is_io));
   // wire pop = mem_din_en && status == WAIT_MC;
   // wire [`LSB_IDX_WIDTH] nxt_front = front + pop;
   // wire [`LSB_IDX_WIDTH] nxt_rear = rear + de_in_en; 
   // wire nxt_empty = (nxt_front == nxt_rear && (empty || pop && !de_in_en));
-  assign lsb_full = (front == rear + 1);
+  assign lsb_full = (front == rear + 1'd1) || (front == rear + 2'd2) || (front == rear + 2'd3);
 
+
+  wire [`ROB_IDX_WIDTH] head_rob_idx = rob_idx[front];
+  wire [`LSB_OPCODE_WIDTH] head_op = op[front];
   wire [`ADDR_WIDTH] head_addr = Vj[front] + offset[front];
+  wire [`DATA_WIDTH] head_data = Vk[front];
   wire is_io = (head_addr[17:16] == 2'b11);
 
   // updated value
@@ -116,7 +120,7 @@ module lsb #(
       q_mem_dout <= 0;
       front <= 0;
       rear <= 0;
-      last <= 5'b10000;
+      // last <= 5'b10000;
       for (i = 0; i < `LSB_SIZE; i = i + 1) begin
         rob_idx[i] <= 0;
         busy[i]    <= 0;
@@ -147,23 +151,6 @@ module lsb #(
       end
       q_mem_d_type <= 0;
     end else begin
-      if (de_in_en) begin
-        rob_idx[rear] <= de_rob_idx_in;
-        busy[rear]    <= 1;
-        ls[rear]      <= de_rw_in;
-        op[rear]      <= de_op_in;
-        Qj_en[rear]   <= Qj_en_updated;
-        Qj[rear]      <= de_Qj_in;
-        Vj[rear]      <= Vj_updated;
-        Qk_en[rear]   <= Qk_en_updated;
-        Qk[rear]      <= de_Qk_in;
-        Vk[rear]      <= Vk_updated;
-        offset[rear]  <= de_offset_in;
-        commit[rear]  <= 0;
-        rear          <= rear + 1;
-      end
-
-
       if (rob_committed_en) begin
         for (i = 0; i < `LSB_SIZE; i = i + 1) begin
           if (busy[i] && rob_idx[i] == rob_committed_idx) begin
@@ -202,6 +189,26 @@ module lsb #(
         end
       end
 
+      if (de_in_en) begin
+        rob_idx[rear] <= de_rob_idx_in;
+        busy[rear]    <= 1;
+        ls[rear]      <= de_rw_in;
+        op[rear]      <= de_op_in;
+        Qj_en[rear]   <= Qj_en_updated;
+        Qj[rear]      <= de_Qj_in;
+        Vj[rear]      <= Vj_updated;
+        Qk_en[rear]   <= Qk_en_updated;
+        Qk[rear]      <= de_Qk_in;
+        Vk[rear]      <= Vk_updated;
+        offset[rear]  <= de_offset_in;
+        commit[rear]  <= 0;
+        rear          <= rear + 1;
+        // `ifdef DEBUG
+        //         $display("lsb rob_idx: %d, ls: %d, op: %d, Qj_en: %d, Qj: %d, Vj: %d, Qk_en: %d, Qk: %d, Vk: %d, offset: %d",
+        //                  de_rob_idx_in, de_rw_in, de_op_in, Qj_en_updated, de_Qj_in, Vj_updated, Qk_en_updated, de_Qk_in, Vk_updated, de_offset_in);
+        // `endif
+      end
+
       lsb2cdb_rob_idx <= lsb2cdb_rob_idx_nxt;
       if (!empty && head_ready && (status == IDLE || mem_din_en || mem_w_done)) begin
         status <= WAIT_MC;
@@ -219,6 +226,10 @@ module lsb #(
         q_op <= op[front];
         commit[front] <= 1'b0;
         front <= front + 1;
+`ifdef DEBUG
+        $display("lsb rob_idx: %d, op: %d, addr: %d, data: %d, ls: %d", rob_idx[front], op[front],
+                 head_addr, Vk[front], ls[front]);
+`endif
       end else begin
         q_mem_d_type <= 2'b00;
         if (mem_din_en || mem_w_done) begin

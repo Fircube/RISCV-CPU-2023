@@ -50,6 +50,18 @@ module memCtrl #(
   reg  [      `DATA_WIDTH]  q_lsb_dout;
   reg                       q_lsb_w_done;
 
+  // conserve LOAD/STORE status
+  reg               q_lsb_rw;
+  reg [        1:0] q_lsb_d_type;
+  reg [`ADDR_WIDTH] q_lsb_ain;
+  reg [`DATA_WIDTH] q_lsb_din;
+
+  wire               lsb_rw_conv = (lsb_d_type != 2'b00) ? lsb_rw : q_lsb_rw;
+  wire [        1:0] lsb_d_type_conv = (lsb_d_type != 2'b00) ? lsb_d_type : q_lsb_d_type;
+  wire [`ADDR_WIDTH] lsb_ain_conv = (lsb_d_type != 2'b00) ? lsb_ain : q_lsb_ain;
+  wire [`DATA_WIDTH] lsb_din_conv = (lsb_d_type != 2'b00) ? lsb_din : q_lsb_din;
+
+
   // ICache input 
   reg                       mem2icache_in_en;
   reg  [      `ADDR_WIDTH]  mem2icache_ain;
@@ -96,8 +108,8 @@ module memCtrl #(
             q_lsb_dout_en <= 0;
             q_lsb_w_done <= 0;
           end else if (!roll_back) begin
-            if (lsb_d_type != 2'b00) begin  // load & store first
-              if (lsb_rw) begin
+            if (lsb_d_type_conv != 2'b00) begin  // load & store first
+              if (lsb_rw_conv) begin
                 // synchronize
                 status  <= STORE;
                 store_a <= lsb_ain;
@@ -107,7 +119,7 @@ module memCtrl #(
                 q_lsb_dout <= 0;
               end
               stage <= 0;
-              case (lsb_d_type)
+              case (lsb_d_type_conv)
                 2'b01: steps <= 1;
                 2'b10: steps <= 2;
                 2'b11: steps <= 4;
@@ -159,6 +171,7 @@ module memCtrl #(
               stage <= 0;
               q_mem_rw <= 0;
               q_mem_aout <= 0;
+              q_lsb_d_type <= 2'b00;
               q_lsb_dout_en <= 1;
             end else begin
               stage <= stage + 1;
@@ -182,6 +195,7 @@ module memCtrl #(
               stage <= 0;
               q_mem_rw <= 0;
               q_mem_aout <= 0;
+              q_lsb_d_type <= 2'b00;
               q_lsb_w_done <= 1;
             end else begin
               stage <= stage + 1;
@@ -190,6 +204,12 @@ module memCtrl #(
         end
       endcase
 
+      if(lsb_d_type != 2'b00) begin
+        q_lsb_rw <= lsb_rw;
+        q_lsb_d_type <= lsb_d_type;
+        q_lsb_ain <= lsb_ain;
+        q_lsb_din <= lsb_din;
+      end
     end
   end
 

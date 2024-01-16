@@ -4,6 +4,8 @@
 `timescale 1ns/1ps
 module testbench;
 
+// `define DEBUG
+
 reg clk;
 reg rst;
 
@@ -26,9 +28,11 @@ initial begin
 end
 
 initial begin
+`ifdef DEBUG
      $dumpfile("test.vcd");
      $dumpvars(0, testbench);
-     #300000 $finish;
+`endif
+     #3000000 $finish;
 end
 
 endmodule

@@ -3,8 +3,8 @@
 
 // alu included
 module rs #(
-  parameter RS_SIZE = 16
-)(
+    parameter RS_SIZE = 16
+) (
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
     input wire rdy_in,  // ready signal, pause cpu when low
@@ -77,10 +77,11 @@ module rs #(
   reg [RS_SIZE-1:0] Qj_en;
   reg [RS_SIZE-1:0] Qk_en;
   wire [RS_SIZE-1:0] ready = ~Qj_en & ~Qk_en;
+  wire work_nxt = (ready != 0);
 
-  reg [RS_SIZE-1:0] busy_num;
-  wire [RS_SIZE-1:0] busy_num_nxt = busy_num + (de_in_en ? 1'b1 : 1'b0) - ((ready!=0) ? 1'b1 : 1'b0);
-  assign rs_full = (busy_num >= `RS_SIZE);
+  reg [3:0] busy_num;
+  wire [3:0] busy_num_nxt = busy_num + (de_in_en ? 1'b1 : 1'b0) - (work_nxt ? 1'b1 : 1'b0);
+  assign rs_full = (busy_num > 13);
 
   reg full;
   reg [4:0] nxt_free_idx;
@@ -108,35 +109,45 @@ module rs #(
   reg [`ROB_IDX_WIDTH] q_rs2cdb_rob_idx_out;
   reg [`DATA_WIDTH] q_rs2cdb_val_out;
 
-  integer i;
+  integer j;
   always @(*) begin
     nxt_free_idx = 5'b10000;
     nxt_alu_idx = 5'b10000;
     full = 1;
-    for (i = 0; i < `RS_SIZE; i = i + 1) begin
-      if (!busy[i]) begin
+    for (j = 0; j < `RS_SIZE; j = j + 1) begin
+      if (!busy[j]) begin
         if (!de_in_en || nxt_free_idx != 5'b10000) full = 0;
-        nxt_free_idx = i;
+        nxt_free_idx = j;
       end
-      if (busy[i] && ready[i]) begin
-        nxt_alu_idx = i;
+      if (busy[j] && ready[j]) begin
+        nxt_alu_idx = j;
       end
     end
   end
 
-
+  integer i;
   always @(posedge clk) begin
     if (rst_in || roll_back) begin
-      for (i = 0; i < `RS_SIZE; i = i + 1) begin
-        busy[i] <= 0;
-      end
       busy_num <= 0;
-      Qj_en <= {`RS_SIZE{1'b1}};
-      Qk_en <= {`RS_SIZE{1'b1}};
+      Qj_en <= {RS_SIZE{1'b1}};
+      Qk_en <= {RS_SIZE{1'b1}};
       alu_en <= 0;
+      alu_v1 <= 0;
+      alu_v2 <= 0;
+      alu_op <= 0;
+      alu_rob_idx <= 0;
       q_rs2cdb_out_en <= 0;
       q_rs2cdb_rob_idx_out <= {`ROB_IDX_SIZE{1'b0}};
       q_rs2cdb_val_out <= 32'b0;
+      for (i = 0; i < RS_SIZE; i = i + 1) begin
+        busy[i] <= 0;
+        rob_idx[i] <= 0;
+        op[i] <= 0;
+        Vj[i] <= 0;
+        Qj[i] <= 0;
+        Vk[i] <= 0;
+        Qk[i] <= 0;
+      end
     end else
     if (!rdy_in) begin
 
@@ -155,7 +166,7 @@ module rs #(
         rob_idx[nxt_free_idx] <= de_rob_idx_in;
       end
 
-      for (i = 0; i < `RS_SIZE; i = i + 1) begin
+      for (i = 0; i < RS_SIZE; i = i + 1) begin
         if (alu_en && busy[i] && Qj_en[i] && (Qj[i] == alu_rob_idx)) begin
           Qj_en[i] <= 0;
           Vj[i] <= alu_result;
@@ -174,7 +185,7 @@ module rs #(
         end
       end
 
-      if (ready != 0) begin
+      if (work_nxt) begin
         busy[nxt_alu_idx] <= 0;
         Qj_en[nxt_alu_idx] <= 1;
         Qk_en[nxt_alu_idx] <= 1;

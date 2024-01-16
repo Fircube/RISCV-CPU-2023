@@ -4,9 +4,9 @@
 // 若 hit 即时刻返回 instrction
 // ram 输入 过一个周期存入 icache
 module iCache #(
-  parameter ICACHE_SIZE = 16,
-  parameter ICACHE_BLK_INSTR = 16
-  )(
+    parameter ICACHE_SIZE = 16,
+    parameter ICACHE_BLK_INSTR = 16
+) (
     input wire clk,    // system clock signal
     input wire rst_in, // reset signal
 
@@ -22,13 +22,13 @@ module iCache #(
 );
 
   // internal storage
-  reg                     cacheValid[ICACHE_SIZE-1:0];
+  reg cacheValid[ICACHE_SIZE-1:0];
   reg [`ICACHE_TAG_WIDTH] cacheTag[ICACHE_SIZE-1:0];
   reg [`ICACHE_BLK_WIDTH] cacheData[ICACHE_SIZE-1:0];
 
   // utensils
-  wire [`ICACHE_TAG_WIDTH]    pc_tag    = if_ain[`ICACHE_TAG_RANGE];
-  wire [`ICACHE_IDX_WIDTH]    pc_idx    = if_ain[`ICACHE_IDX_RANGE];
+  wire [`ICACHE_TAG_WIDTH] pc_tag = if_ain[`ICACHE_TAG_RANGE];
+  wire [`ICACHE_IDX_WIDTH] pc_idx = if_ain[`ICACHE_IDX_RANGE];
   wire [`ICACHE_OFFSET_WIDTH] pc_offset = if_ain[`ICACHE_OFFSET_RANGE];
   wire hit = cacheValid[pc_idx] && (cacheTag[pc_idx] == pc_tag);
 

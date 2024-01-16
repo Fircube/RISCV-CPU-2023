@@ -11,7 +11,6 @@
 // `include "./riscv/src/load_store_buffer.v"
 // `include "./riscv/src/reorder_buffer.v"
 
-
 module cpu (
     input wire clk_in,  // system clock signal
     input wire rst_in,  // reset signal
@@ -43,10 +42,7 @@ module cpu (
   wire                      roll_back;
   wire [      `ADDR_WIDTH]  corr_pc;
 
-
   // CDB
-  wire [`REG_IDX_WIDTH]     rs1 = mc2if_instr[`RS1_RANGE];
-  wire [`REG_IDX_WIDTH]     rs2 = mc2if_instr[`RS2_RANGE];
   // rs
   wire                      rs_full;
   wire                      rs2cdb_en;
@@ -63,11 +59,9 @@ module cpu (
   // rob
   wire                      rob_full;
 
-
   // mc & if
   wire                      mc2if_instr_en;
   wire [     `INSTR_WIDTH]  mc2if_instr;
-  wire                      if2mc_a_en;
   wire [      `ADDR_WIDTH]  if2mc_a;
 
   // mc & lsb
@@ -99,10 +93,8 @@ module cpu (
   wire                      de2rf_en;
   wire [   `ROB_IDX_WIDTH]  de2rf_rob_idx;
   wire [   `REG_IDX_WIDTH]  de2rf_dest;
-  wire [   `REG_IDX_WIDTH]  de2rf_rs1;
   wire                      rf2de_rs1_busy;
   wire [      `DATA_WIDTH]  rf2de_rs1_val;
-  wire [   `REG_IDX_WIDTH]  de2rf_rs2;
   wire                      rf2de_rs2_busy;
   wire [      `DATA_WIDTH]  rf2de_rs2_val;
 
@@ -115,7 +107,7 @@ module cpu (
   wire [   `ROB_IDX_WIDTH]  de2rs_Qj;
   wire [      `DATA_WIDTH]  de2rs_Vk;
   wire                      de2rs_Qk_en;
-  wire [   `ROB_IDX_WIDTH]  de2rs_Qk_in;
+  wire [   `ROB_IDX_WIDTH]  de2rs_Qk;
 
   // decoder & lsb
   wire                      de2lsb_en;
@@ -145,7 +137,7 @@ module cpu (
 
   // predictor & rob
   wire                      rob2pre_en;
-  wire [             31:0 ] rob2pre_a;
+  wire [      `ADDR_WIDTH]  rob2pre_a;
   wire                      rob2pre_jump;
 
   // lsb & rob
@@ -157,11 +149,13 @@ module cpu (
   wire [   `ROB_IDX_WIDTH]  rob2rf_idx;
   wire [   `REG_IDX_WIDTH]  rob2rf_dest;
   wire [      `DATA_WIDTH]  rob2rf_val;
+  wire                      rob2rf_rs1_busy;
+  wire [      `DATA_WIDTH]  rob2rf_rs1_val;
+  wire                      rob2rf_rs2_busy;
+  wire [      `DATA_WIDTH]  rob2rf_rs2_val;
 
-  wire               rob2rf_rs1_busy;
-  wire [`DATA_WIDTH] rob2rf_rs1_val;
-  wire               rob2rf_rs2_busy;
-  wire [`DATA_WIDTH] rob2rf_rs2_val;
+  wire [`REG_IDX_WIDTH] rs1 = mc2if_instr[`RS1_RANGE];
+  wire [`REG_IDX_WIDTH] rs2 = mc2if_instr[`RS2_RANGE];
 
   memCtrl MemCtrl (
       .clk(clk_in),
@@ -188,103 +182,184 @@ module cpu (
       .lsb_w_done(mc2lsb_w_done)
   );
 
-  iFetch Ifetch (
-      .clk(clk_in),
-      .rst_in(rst_in),
-      .rdy_in(rdy_in),
+  issue Issue(
+      .rst_in           (rst_in),
+      .clk              (clk_in),
+      .rdy_in           (rdy_in),
 
-      .roll_back(roll_back),
+      .roll_back        (roll_back),
+      .corr_pc          (corr_pc),
 
-      .mc_instr_in_en(mc2if_instr_en),
-      .mc_instr_in(mc2if_instr),
-      .mc_aout(if2mc_a),
+      // For Cache
+      .mc_instr_in_en   (mc2if_instr_en),
+      .mc_instr_in      (mc2if_instr),
+      .mc_aout          (if2mc_a),
 
-      .stall_reset(de2if_stall_reset),
-      .new_pc(de2if_new_pc),
+      // For Reservation Station
+      .rs_full          (rs_full),
+      .rs_in_en         (rs2cdb_en),
+      .rs_rob_idx_in    (rs2cdb_rob_idx),
+      .rs_val_in        (rs2cdb_val),
 
-      .de_out_en(if2de_en),
-      .de_pc_out(if2de_pc),
-      .de_instr_out(if2de_instr),
+      .rs_out_en        (de2rs_en),
+      .rs_op_out        (de2rs_op),
+      .rs_rob_idx_out   (de2rs_rob_idx),
+      .rs_Vj_out        (de2rs_Vj),
+      .rs_Qj_out_en     (de2rs_Qj_en),
+      .rs_Qj_out        (de2rs_Qj),
+      .rs_Vk_out        (de2rs_Vk),
+      .rs_Qk_out_en     (de2rs_Qk_en),
+      .rs_Qk_out        (de2rs_Qk),
 
-      .rs_full(rs_full),
-      .lsb_full(lsb_full),
-      .rob_full(rob_full),
-      .rob_ready_in(rob2if_ready),
-      .rob_val_in(rob2if_val),
-      .corr_pc(corr_pc)
-  );
+      // For Reorder Buffer
+      .rob_full         (rob_full),
+      .rob_idx_nxt      (rob_idx_nxt),
+      .rob_ready_in     (rob2if_ready),
+      .rob_val_in       (rob2if_val),
 
-  decoder Decoder (
-      .clk(clk_in),
-      .rst_in(rst_in),
-      .rdy_in(rdy_in),
-      .roll_back(roll_back),
-
-      .if_in_en(if2de_en),
-      .if_pc_in(if2de_pc),
-      .if_instr_in(if2de_instr),
-
-      .stall_reset(de2if_stall_reset),
-      .new_pc(de2if_new_pc),
-
-      .jump(jump),
-
-      .rs1_busy(rf2de_rs1_busy),
-      .rs1_dep_in(rs1_dep),
-      .rs1_val_in(rf2de_rs1_val),
-      .rs2_busy(rf2de_rs2_busy),
-      .rs2_dep_in(rs2_dep),
-      .rs2_val_in(rf2de_rs2_val),
-
-      .rf_out_en(de2rf_en),
-      .rf_dest_out(de2rf_dest),
-      .rf_rob_idx_out(de2rf_rob_idx),
-
-      .rs_in_en(rs2cdb_en),
-      .rs_rob_idx_in(rs2cdb_rob_idx),
-      .rs_val_in(rs2cdb_val),
-
-      .rs_out_en(de2rs_en),
-      .rs_op_out(de2rs_op),
-      .rs_Vj_out(de2rs_Vj),
-      .rs_Qj_out_en(de2rs_Qj_en),
-      .rs_Qj_out(de2rs_Qj),
-      .rs_Vk_out(de2rs_Vk),
-      .rs_Qk_out_en(de2rs_Qk_en),
-      .rs_Qk_out(de2rs_Qk_in),
-      .rs_rob_idx_out(de2rs_rob_idx),
-
-      .lsb_in_en(lsb2cdb_en),
-      .lsb_rob_idx_in(lsb2cdb_rob_idx),
-      .lsb_val_in(lsb2cdb_val),
-
-      .lsb_out_en(de2lsb_en),
-      .lsb_rw_out(de2lsb_rw),
-      .lsb_op_out(de2lsb_op),
-      .lsb_Vj_out(de2lsb_Vj),
-      .lsb_Qj_out_en(de2lsb_Qj_en),
-      .lsb_Qj_out(de2lsb_Qj),
-      .lsb_Vk_out(de2lsb_Vk),
-      .lsb_Qk_out_en(de2lsb_Qk_en),
-      .lsb_Qk_out(de2lsb_Qk),
-      .lsb_offset_out(de2lsb_offset),
-      .lsb_rob_idx_out(de2lsb_rob_idx),
-
-      .rob_idx_nxt(rob_idx_nxt),
       .stall_rob_idx_out(stall_rob_idx),
 
-      .rob_out_en(de2rob_en),
-      .rob_idx_out(de2rob_rob_idx),
-      .rob_ready_out(de2rob_ready),
-      .rob_op_out(de2rob_op),
-      .rob_dest_out(de2rob_dest),
-      .rob_val_out(de2rob_val),
-      .rob_jump_out(de2rob_jump),
-      .rob_instr_aout(de2rob_instr_a),
-      .rob_not_jump_to(de2rob_not_jump_to)
+      .rob_out_en       (de2rob_en),
+      .rob_idx_out      (de2rob_rob_idx),
+      .rob_op_out       (de2rob_op),
+      .rob_ready_out    (de2rob_ready),
+      .rob_val_out      (de2rob_val),
+      .rob_jump_out     (de2rob_jump),
+      .rob_dest_out     (de2rob_dest),
+      .rob_not_jump_to  (de2rob_not_jump_to),
+      .rob_instr_aout   (de2rob_instr_a),
+
+      // For Load & Store Buffer
+      .lsb_full         (lsb_full),
+      .lsb_in_en        (lsb2cdb_en),
+      .lsb_rob_idx_in   (lsb2cdb_rob_idx),
+      .lsb_val_in       (lsb2cdb_val),
+
+      .lsb_out_en       (de2lsb_en),
+      .lsb_rw_out       (de2lsb_rw),
+      .lsb_rob_idx_out  (de2lsb_rob_idx),
+      .lsb_Qj_out_en    (de2lsb_Qj_en),
+      .lsb_Vj_out       (de2lsb_Vj),
+      .lsb_Qj_out       (de2lsb_Qj),
+      .lsb_offset_out   (de2lsb_offset),
+      .lsb_Qk_out_en    (de2lsb_Qk_en),
+      .lsb_Vk_out       (de2lsb_Vk),
+      .lsb_Qk_out       (de2lsb_Qk),
+      .lsb_op_out       (de2lsb_op),
+
+      // For Register File
+      .rs1_busy         (rf2de_rs1_busy),
+      .rs1_dep_in       (rs1_dep),
+      .rs1_val_in       (rf2de_rs1_val),
+      .rs2_busy         (rf2de_rs2_busy),
+      .rs2_dep_in       (rs2_dep),
+      .rs2_val_in       (rf2de_rs2_val),
+
+      .rf_out_en        (de2rf_en),
+      .rf_dest_out      (de2rf_dest),
+      .rf_rob_idx_out   (de2rf_rob_idx),
+
+      // For Predictor
+      .jump             (jump)
   );
 
-  predictor Predictor(
+    // iFetch Ifetch (
+    //     .clk(clk_in),
+    //     .rst_in(rst_in),
+    //     .rdy_in(rdy_in),
+
+    //     .roll_back(roll_back),
+
+    //     .mc_instr_in_en(mc2if_instr_en),
+    //     .mc_instr_in(mc2if_instr),
+    //     .mc_aout(if2mc_a),
+
+    //     .stall_reset(de2if_stall_reset),
+    //     .new_pc(de2if_new_pc),
+
+    //     .de_out_en(if2de_en),
+    //     .de_pc_out(if2de_pc),
+    //     .de_instr_out(if2de_instr),
+
+    //     .rs_full(rs_full),
+    //     .lsb_full(lsb_full),
+    //     .rob_full(rob_full),
+    //     .rob_ready_in(rob2if_ready),
+    //     .rob_val_in(rob2if_val),
+    //     .corr_pc(corr_pc)
+    // );
+
+    // decoder Decoder (
+    //     .clk(clk_in),
+    //     .rst_in(rst_in),
+    //     .rdy_in(rdy_in),
+    //     .roll_back(roll_back),
+
+    //     .if_in_en(if2de_en),
+    //     .if_pc_in(if2de_pc),
+    //     .if_instr_in(if2de_instr),
+
+    //     .stall_reset(de2if_stall_reset),
+    //     .new_pc(de2if_new_pc),
+
+    //     .jump(jump),
+
+    //     .rs1_busy(rf2de_rs1_busy),
+    //     .rs1_dep_in(rs1_dep),
+    //     .rs1_val_in(rf2de_rs1_val),
+    //     .rs2_busy(rf2de_rs2_busy),
+    //     .rs2_dep_in(rs2_dep),
+    //     .rs2_val_in(rf2de_rs2_val),
+
+    //     .rf_out_en(de2rf_en),
+    //     .rf_dest_out(de2rf_dest),
+    //     .rf_rob_idx_out(de2rf_rob_idx),
+
+    //     .rs_in_en(rs2cdb_en),
+    //     .rs_rob_idx_in(rs2cdb_rob_idx),
+    //     .rs_val_in(rs2cdb_val),
+
+    //     .rs_out_en(de2rs_en),
+    //     .rs_op_out(de2rs_op),
+    //     .rs_Vj_out(de2rs_Vj),
+    //     .rs_Qj_out_en(de2rs_Qj_en),
+    //     .rs_Qj_out(de2rs_Qj),
+    //     .rs_Vk_out(de2rs_Vk),
+    //     .rs_Qk_out_en(de2rs_Qk_en),
+    //     .rs_Qk_out(de2rs_Qk),
+    //     .rs_rob_idx_out(de2rs_rob_idx),
+
+    //     .lsb_in_en(lsb2cdb_en),
+    //     .lsb_rob_idx_in(lsb2cdb_rob_idx),
+    //     .lsb_val_in(lsb2cdb_val),
+
+    //     .lsb_out_en(de2lsb_en),
+    //     .lsb_rw_out(de2lsb_rw),
+    //     .lsb_op_out(de2lsb_op),
+    //     .lsb_Vj_out(de2lsb_Vj),
+    //     .lsb_Qj_out_en(de2lsb_Qj_en),
+    //     .lsb_Qj_out(de2lsb_Qj),
+    //     .lsb_Vk_out(de2lsb_Vk),
+    //     .lsb_Qk_out_en(de2lsb_Qk_en),
+    //     .lsb_Qk_out(de2lsb_Qk),
+    //     .lsb_offset_out(de2lsb_offset),
+    //     .lsb_rob_idx_out(de2lsb_rob_idx),
+
+    //     .rob_idx_nxt(rob_idx_nxt),
+    //     .stall_rob_idx_out(stall_rob_idx),
+
+    //     .rob_out_en(de2rob_en),
+    //     .rob_idx_out(de2rob_rob_idx),
+    //     .rob_ready_out(de2rob_ready),
+    //     .rob_op_out(de2rob_op),
+    //     .rob_dest_out(de2rob_dest),
+    //     .rob_val_out(de2rob_val),
+    //     .rob_jump_out(de2rob_jump),
+    //     .rob_instr_aout(de2rob_instr_a),
+    //     .rob_not_jump_to(de2rob_not_jump_to)
+    // );
+
+  predictor Predictor (
       .clk(clk_in),
       .rst_in(rst_in),
       .rdy_in(rdy_in),
@@ -312,9 +387,9 @@ module cpu (
       .de_rob_idx_in(de2rf_rob_idx),
 
       .de_rs1_busy_out(rf2de_rs1_busy),
-      .de_rs1_val_out(rf2de_rs1_val),
+      .de_rs1_val_out (rf2de_rs1_val),
       .de_rs2_busy_out(rf2de_rs2_busy),
-      .de_rs2_val_out(rf2de_rs2_val),
+      .de_rs2_val_out (rf2de_rs2_val),
 
       .rob_in_en  (rob2rf_en),
       .rob_idx_in (rob2rf_idx),
@@ -322,9 +397,9 @@ module cpu (
       .rob_val_in (rob2rf_val),
 
       .rob_rs1_busy_in(rob2rf_rs1_busy),
-      .rob_rs1_val_in(rob2rf_rs1_val),
+      .rob_rs1_val_in (rob2rf_rs1_val),
       .rob_rs2_busy_in(rob2rf_rs2_busy),
-      .rob_rs2_val_in(rob2rf_rs2_val)
+      .rob_rs2_val_in (rob2rf_rs2_val)
   );
 
   rs RS (
@@ -346,7 +421,7 @@ module cpu (
       .de_Qj_in(de2rs_Qj),
       .de_Vk_in(de2rs_Vk),
       .de_Qk_in_en(de2rs_Qk_en),
-      .de_Qk_in(de2rs_Qk_in),
+      .de_Qk_in(de2rs_Qk),
       .de_rob_idx_in(de2rs_rob_idx),
 
       .lsb_in_en(lsb2cdb_en),
@@ -401,8 +476,11 @@ module cpu (
 
       .roll_back(roll_back),
 
-      .rob_full (rob_full),
-      .corr_pc  (corr_pc),
+      .rob_full(rob_full),
+      .corr_pc (corr_pc),
+
+      .if_ready_out(rob2if_ready),
+      .if_val_out  (rob2if_val),
 
       .de_in_en(de2rob_en),
       .de_rob_idx_in(de2rob_rob_idx),
@@ -430,9 +508,9 @@ module cpu (
       .rs2_dep_in(rs2_dep),
 
       .rs1_busy_out(rob2rf_rs1_busy),
-      .rs1_val_out(rob2rf_rs1_val),
+      .rs1_val_out (rob2rf_rs1_val),
       .rs2_busy_out(rob2rf_rs2_busy),
-      .rs2_val_out(rob2rf_rs2_val),
+      .rs2_val_out (rob2rf_rs2_val),
 
       .rs_in_en(rs2cdb_en),
       .rs_rob_idx_in(rs2cdb_rob_idx),

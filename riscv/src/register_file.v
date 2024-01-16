@@ -39,7 +39,7 @@ module regFile #(
 
   // internal storage
   reg busy[REG_SIZE-1:0];
-  reg [`ROB_IDX_WIDTH] committed[REG_SIZE-1:0];
+  reg [`ROB_IDX_WIDTH] dep[REG_SIZE-1:0];
   reg [`DATA_WIDTH] value[REG_SIZE-1:0];
 
   // Interface-related reg
@@ -48,11 +48,11 @@ module regFile #(
 
   wire rs1_issue = de_in_en && (de_dest_in != 5'b00000) && de_dest_in == q_rs1;
   wire rs2_issue = de_in_en && (de_dest_in != 5'b00000) && de_dest_in == q_rs2;
-  wire rs1_dep_commit = rob_in_en && (rob_dest_in != 5'b00000) && rob_dest_in == q_rs1 && busy[q_rs1] && rob_idx_in == committed[q_rs1] ;
-  wire rs2_dep_commit = rob_in_en && (rob_dest_in != 5'b00000) && rob_dest_in == q_rs2 && busy[q_rs2] && rob_idx_in == committed[q_rs2] ;
+  wire rs1_dep_commit = rob_in_en && (rob_dest_in != 5'b00000) && rob_dest_in == q_rs1 && busy[q_rs1] && rob_idx_in == dep[q_rs1];
+  wire rs2_dep_commit = rob_in_en && (rob_dest_in != 5'b00000) && rob_dest_in == q_rs2 && busy[q_rs2] && rob_idx_in == dep[q_rs2];
   
-  assign rs1_dep_out = rs1_issue ? de_rob_idx_in : committed[q_rs1];
-  assign rs2_dep_out = rs2_issue ? de_rob_idx_in : committed[q_rs2];
+  assign rs1_dep_out = rs1_issue ? de_rob_idx_in : dep[q_rs1];
+  assign rs2_dep_out = rs2_issue ? de_rob_idx_in : dep[q_rs2];
   
   // 先commit再issue
   assign de_rs1_busy_out = rob_rs1_busy_in & (rs1_issue ? 1'b1 : rs1_dep_commit ? 1'b0 : busy[q_rs1]);
@@ -65,7 +65,7 @@ module regFile #(
     if (rst_in) begin
       for (i = 0; i < 32; i = i + 1) begin
         busy[i]    <= 1'b0;
-        committed[i] <= {`ROB_IDX_SIZE{1'b0}};
+        dep[i] <= {`ROB_IDX_SIZE{1'b0}};
         value[i]   <= 32'b0;
       end
       q_rs1 <= {`REG_SIZE{1'b0}};
@@ -81,10 +81,10 @@ module regFile #(
       q_rs2 <= rs2;
       if (de_in_en && de_dest_in != 5'b00000) begin
         busy[de_dest_in] <= 1'b1;
-        committed[de_dest_in] <= de_rob_idx_in;
+        dep[de_dest_in] <= de_rob_idx_in;
       end
       if (rob_in_en && rob_dest_in != 5'b00000) begin // 注意先后次序！ 此处尝试先commit再issue
-        if (rob_idx_in == committed[rob_dest_in] && !(de_in_en && de_dest_in == rob_dest_in)) begin
+        if (rob_idx_in == dep[rob_dest_in] && !(de_in_en && de_dest_in == rob_dest_in)) begin
           busy[rob_dest_in] <= 1'b0;
         end
         value[rob_dest_in] <= rob_val_in;
