@@ -157,7 +157,7 @@ module cpu (
   wire [`REG_IDX_WIDTH] rs1 = mc2if_instr[`RS1_RANGE];
   wire [`REG_IDX_WIDTH] rs2 = mc2if_instr[`RS2_RANGE];
 
-  memCtrl MemCtrl (
+    memCtrl MemCtrl (
       .clk(clk_in),
       .rst_in(rst_in),
       .rdy_in(rdy_in),

@@ -123,11 +123,11 @@ module rob #(
   assign rs2_val_out  = rs_rs2_busy_updated ? rs_val_in : lsb_rs2_busy_updated ? lsb_val_in : de_rs2_busy_updated ? de_val_in : val[rs2_dep_in];
 
   wire head_ready = ready[front];
-  wire [`ROB_OPCODE_WIDTH] head_op = op[front];
-  wire [`REG_IDX_WIDTH] head_dest = dest[front];
+  // wire [`ROB_OPCODE_WIDTH] head_op = op[front];
+  // wire [`REG_IDX_WIDTH] head_dest = dest[front];
   wire [31:0] head_val = val[front];
-  wire [31:0] head_instr_a = instr_a[front];
-  wire [`ADDR_WIDTH] head_not_jump_to = not_jump_to[front];
+  // wire [31:0] head_instr_a = instr_a[front];
+  // wire [`ADDR_WIDTH] head_not_jump_to = not_jump_to[front];
 
   integer i;
   always @(posedge clk) begin

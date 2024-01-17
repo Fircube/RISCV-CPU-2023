@@ -3,7 +3,7 @@
 // `include "./riscv/src/icache.v"
 
 module memCtrl #(
-  parameter ICACHE_BLK_SIZE = 64
+  parameter ICACHE_BLK_SIZE = 16
 )(
     input wire clk,       // system clock signal
     input wire rst_in,    // reset signal
@@ -65,7 +65,7 @@ module memCtrl #(
   // ICache input 
   reg                       mem2icache_in_en;
   reg  [      `ADDR_WIDTH]  mem2icache_ain;
-  wire [`ICACHE_BLK_WIDTH]  mem2icache_din;
+  wire [`CACHE_BLK_WIDTH]  mem2icache_din;
   reg  [              7:0 ] mem2icache_din_  [ICACHE_BLK_SIZE-1:0];
 
   genvar _i;
@@ -79,7 +79,7 @@ module memCtrl #(
       .clk            (clk),
       .rst_in         (rst_in),
       .mem_in_en      (mem2icache_in_en),
-      .mem_ain        (mem2icache_ain),
+      .mem_ain        (mem2icache_ain[31:4]),
       .mem_din        (mem2icache_din),
       .if_ain         (if_ain),
       .if_instr_out_en(if_instr_out_en),
@@ -127,7 +127,7 @@ module memCtrl #(
             end else if (!if_instr_out_en) begin
               status <= IF;
               stage <= 0;
-              steps <= 64;
+              steps <= 16;
               mem2icache_ain <= if_ain;
               q_mem_aout <= {if_ain[`ICACHE_TAG_RANGE], if_ain[`ICACHE_IDX_RANGE], 6'b0};
             end

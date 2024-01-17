@@ -40,8 +40,6 @@ module rs #(
   reg [`RS_OPCODE_WIDTH] alu_op;
   reg [  `ROB_IDX_WIDTH] alu_rob_idx;
   reg [     `DATA_WIDTH] alu_result;
-  //   reg                    alu_jump;
-
 
   always @(*) begin
     case (alu_op)

@@ -5,15 +5,15 @@
 // ram 输入 过一个周期存入 icache
 module iCache #(
     parameter ICACHE_SIZE = 16,
-    parameter ICACHE_BLK_INSTR = 16
+    parameter ICACHE_BLK_INSTR = 4
 ) (
     input wire clk,    // system clock signal
     input wire rst_in, // reset signal
 
     // RAM
-    input wire                     mem_in_en,
-    input wire [      `ADDR_WIDTH] mem_ain,
-    input wire [`ICACHE_BLK_WIDTH] mem_din,
+    input wire                    mem_in_en,
+    input wire [            31:4] mem_ain,
+    input wire [`CACHE_BLK_WIDTH] mem_din,
 
     // IF
     input  wire [ `ADDR_WIDTH] if_ain,           // address from IF
@@ -24,7 +24,7 @@ module iCache #(
   // internal storage
   reg cacheValid[ICACHE_SIZE-1:0];
   reg [`ICACHE_TAG_WIDTH] cacheTag[ICACHE_SIZE-1:0];
-  reg [`ICACHE_BLK_WIDTH] cacheData[ICACHE_SIZE-1:0];
+  reg [`CACHE_BLK_WIDTH] cacheData[ICACHE_SIZE-1:0];
 
   // utensils
   wire [`ICACHE_TAG_WIDTH] pc_tag = if_ain[`ICACHE_TAG_RANGE];
@@ -35,7 +35,7 @@ module iCache #(
   wire [`ICACHE_TAG_WIDTH] mem_pc_tag = mem_ain[`ICACHE_TAG_RANGE];
   wire [`ICACHE_IDX_WIDTH] mem_pc_idx = mem_ain[`ICACHE_IDX_RANGE];
 
-  wire [`ICACHE_BLK_WIDTH] cur_block = cacheData[pc_idx];
+  wire [`CACHE_BLK_WIDTH] cur_block = cacheData[pc_idx];
   wire [`INSTR_WIDTH] cur_instrs[ICACHE_BLK_INSTR-1:0];
   wire [`INSTR_WIDTH] cur_instr = cur_instrs[pc_offset];
 

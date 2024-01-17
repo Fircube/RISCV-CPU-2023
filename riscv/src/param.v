@@ -8,17 +8,23 @@
 // direct mapped
 // 16 Blocks * 16 Instr per block * 4 Bype per Instr
 // `define ICACHE_SIZE 16
-// `define ICACHE_BLK_INSTR 16
-// `define ICACHE_BLK_SIZE 64
-`define ICACHE_BLK_WIDTH 511:0
+// `define ICACHE_BLK_INSTR 4
+// `define ICACHE_BLK_SIZE 16
+`define CACHE_BLK_WIDTH 127:0
 // 0x0 - 0x20000 
-`define ICACHE_TAG_RANGE 31:10 
-`define ICACHE_TAG_WIDTH 21:0
-`define ICACHE_IDX_RANGE 9:6 
+`define ICACHE_TAG_RANGE 31:8 
+`define ICACHE_TAG_WIDTH 23:0
+`define ICACHE_IDX_RANGE 7:4 
 `define ICACHE_IDX_WIDTH 3:0
-`define ICACHE_OFFSET_RANGE 5:2 // last 2 bit can be ignore
-`define ICACHE_OFFSET_WIDTH 3:0
+`define ICACHE_OFFSET_RANGE 3:2 // last 2 bit can be ignore
+`define ICACHE_OFFSET_WIDTH 1:0
 
+`define DCACHE_TAG_RANGE 31:7 
+`define DCACHE_TAG_WIDTH 24:0
+`define DCACHE_IDX_RANGE 6:4 
+`define DCACHE_IDX_WIDTH 2:0
+`define DCACHE_OFFSET_RANGE 3:0 // last 2 bit can be ignore
+`define DCACHE_OFFSET_WIDTH 3:0
 // size
 `define ROB_SIZE 16
 `define REG_SIZE 32
