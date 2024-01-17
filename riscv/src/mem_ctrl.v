@@ -1,223 +1,485 @@
 `include "param.v"
 // `include "./riscv/src/param.v"
 // `include "./riscv/src/icache.v"
-
+// `include "./riscv/src/dcache.v"
 module memCtrl #(
-  parameter ICACHE_BLK_SIZE = 16
-)(
+    parameter ICACHE_SIZE = 16,
+    parameter ICACHE_BLK_INSTR = 4,
+    parameter DCACHE_SIZE = 8,
+    parameter DCACHE_BLK_DATA = 16
+) (
     input wire clk,       // system clock signal
     input wire rst_in,    // reset signal
     input wire rdy_in,    // ready signal, pause cpu when low
     input wire roll_back, // wrong prediction signal
 
-    input wire io_buffer_full,  // 1 if uart buffer is full
+    input wire io_buffer_full,
 
-    // RAM
-    input  wire [       7:0] mem_din,   // read data from ram
-    output wire              mem_rw,    // write/read signal (1 for write)
-    output wire [       7:0] mem_dout,  // write data to ram
-    output wire [`MEM_WIDTH] mem_aout,  // address to ram (only 17:0 is used)
+    input  wire [        7:0] mem_din,
+    output wire               mem_rw,
+    output wire [`ADDR_WIDTH] mem_aout,
+    output wire [        7:0] mem_dout,
 
-    // Instruction Unit
-    input  wire [ `ADDR_WIDTH] if_ain,           // address from instruction unit
+    // IF
+    input  wire [ `ADDR_WIDTH] if_ain,
     output wire                if_instr_out_en,
-    output wire [`INSTR_WIDTH] if_instr_out,     // instruction to instruction unit
+    output wire [`INSTR_WIDTH] if_instr_out,
 
-    // Load Store Buffer
-    input  wire               lsb_rw,       // write/read signal (1 for write)
-    input  wire [        1:0] lsb_d_type,   // 2'b00 None/2'b01 Byte/2'b10 Half/2'b11 Word
-    input  wire [`ADDR_WIDTH] lsb_ain,
-    input  wire [`DATA_WIDTH] lsb_din,
-    output wire               lsb_dout_en,
-    output wire [`DATA_WIDTH] lsb_dout,
-    output wire               lsb_w_done
+    // LSB
+    input wire lsb_rw,
+    input wire [1:0] lsb_d_type,
+    input wire [31:0] lsb_ain,
+    input wire [31:0] lsb_din,
+
+    output wire        lsb_dout_en,
+    output wire [31:0] lsb_dout,
+    output wire        lsb_w_done
 );
 
   parameter IDLE = 0, IF = 1, LOAD = 2, STORE = 3;
 
-  reg  [              1:0 ] status;
-  reg  [              6:0 ] stage;
-  reg  [              6:0 ] steps;
+  reg [3:0] stage;
+  reg [6:0] steps;
+  reg [1:0] status;
+  reg [1:0] IO_status;
 
-  reg  [      `ADDR_WIDTH]  store_a;
+  wire is_IO = (lsb_d_type_conv != 2'b00) && (lsb_ain_conv[17:16] == 2'b11);
 
-  // Interface-related reg
-  reg                       q_mem_rw;
-  reg  [              7:0 ] q_mem_dout;
-  reg  [       `MEM_WIDTH]  q_mem_aout;
+  reg q_mem_rw;
+  reg [7:0] q_mem_dout;
+  reg [31:0] q_mem_aout;
 
-  reg                       q_lsb_dout_en;
-  reg  [      `DATA_WIDTH]  q_lsb_dout;
-  reg                       q_lsb_w_done;
+  reg [31:4] mem2cache_a;
+  reg [`CACHE_BLK_WIDTH] mem2cache_d;
+
+  // ICache input 
+  reg mem2icache_in_en;
+  wire [31:4] mem2icache_ain = mem2cache_a;
+  wire [`CACHE_BLK_WIDTH] mem2icache_din = mem2cache_d;
+
+  // DCache input 
+  reg mem2dcache_in_en;
+  wire [31:4] mem2dcache_ain = mem2cache_a;
+  wire [`CACHE_BLK_WIDTH] mem2dcache_din = mem2cache_d;
+  reg q_mem_w_done;
+  reg q_IO_din_en;
+  reg q_IO_w_done;
+
+  // DCache output wires
+  wire dCache_miss;
+  wire [31:4] dCache_miss_a;
+  wire dCache_rw_out;
+  wire [`CACHE_BLK_WIDTH] dcache_write_back_en;
 
   // conserve LOAD/STORE status
-  reg               q_lsb_rw;
-  reg [        1:0] q_lsb_d_type;
+  reg q_lsb_rw;
+  reg [1:0] q_lsb_d_type;
   reg [`ADDR_WIDTH] q_lsb_ain;
   reg [`DATA_WIDTH] q_lsb_din;
 
-  wire               lsb_rw_conv = (lsb_d_type != 2'b00) ? lsb_rw : q_lsb_rw;
-  wire [        1:0] lsb_d_type_conv = (lsb_d_type != 2'b00) ? lsb_d_type : q_lsb_d_type;
+  wire lsb_rw_conv = (lsb_d_type != 2'b00) ? lsb_rw : q_lsb_rw;
+  wire [1:0] lsb_d_type_conv = (lsb_d_type != 2'b00) ? lsb_d_type : q_lsb_d_type;
   wire [`ADDR_WIDTH] lsb_ain_conv = (lsb_d_type != 2'b00) ? lsb_ain : q_lsb_ain;
   wire [`DATA_WIDTH] lsb_din_conv = (lsb_d_type != 2'b00) ? lsb_din : q_lsb_din;
 
-
-  // ICache input 
-  reg                       mem2icache_in_en;
-  reg  [      `ADDR_WIDTH]  mem2icache_ain;
-  wire [`CACHE_BLK_WIDTH]  mem2icache_din;
-  reg  [              7:0 ] mem2icache_din_  [ICACHE_BLK_SIZE-1:0];
-
-  genvar _i;
-  generate
-    for (_i = 0; _i < ICACHE_BLK_SIZE; _i = _i + 1) begin
-      assign mem2icache_din[_i*8+7:_i*8] = mem2icache_din_[_i];
-    end
-  endgenerate
+  reg ls_proceeding;
+  reg IO_proceeding;
+  reg ls_done;
+  reg IO_done;
+  reg ID;  // ICache: 1, Dcache: 0
+  reg rw;  // read: 0, write: 1
+  reg idle;
+  reg idle_;
 
   iCache icache (
       .clk            (clk),
       .rst_in         (rst_in),
-      .mem_in_en      (mem2icache_in_en),
-      .mem_ain        (mem2icache_ain[31:4]),
-      .mem_din        (mem2icache_din),
       .if_ain         (if_ain),
+      .mem_in_en      (mem2icache_in_en),
+      .mem_ain        (mem2icache_ain),
+      .mem_din        (mem2icache_din),
       .if_instr_out_en(if_instr_out_en),
       .if_instr_out   (if_instr_out)
   );
 
-  integer i;
+  dCache dcache (
+      .clk      (clk),
+      .rst_in   (rst_in),
+      .roll_back(roll_back),
+      .rdy_in   (rdy_in),
+
+      .lsb_rw    (lsb_rw),
+      .lsb_d_type(lsb_d_type),
+      .lsb_ain   (lsb_ain),
+      .lsb_din   (lsb_din),
+
+      .mem_in_en(mem2dcache_in_en),
+      .mem_ain  (mem2dcache_ain),
+      .mem_din  (mem2dcache_din),
+
+      .mem_w_done(q_mem_w_done),
+
+      .IO_din_en(q_IO_din_en),
+      .IO_din   (q_lsb_din),
+      .IO_w_done(q_IO_w_done),
+
+      .miss_a(dCache_miss_a),
+      .miss  (dCache_miss),
+
+      .mem_rw       (dCache_rw_out),
+      .write_back_en(dcache_write_back_en),
+
+      .lsb_dout_en(lsb_dout_en),
+      .lsb_dout   (lsb_dout),
+      .lsb_w_done (lsb_w_done)
+  );
+
   always @(posedge clk) begin
     if (rst_in) begin
-      status <= IDLE;
-      q_mem_rw <= 0;
-      q_mem_dout <= 0;
-      q_mem_aout <= 0;
-      q_lsb_dout_en <= 0;
-      q_lsb_dout <= 0;
-      q_lsb_w_done <= 0;
+      ls_proceeding    <= 0;
+      ls_done          <= 0;
+      rw               <= 1;
+      idle             <= 0;
+      idle_            <= 0;
+      stage            <= 0;
+      IO_done          <= 0;
+      IO_proceeding    <= 0;
+      IO_status        <= 2'b00;
+      q_mem_rw         <= 0;
+      q_IO_din_en      <= 0;
+      q_IO_w_done      <= 0;
+      q_lsb_ain        <= 32'b0;
+      q_lsb_d_type     <= 2'b00;
+      q_lsb_din        <= 32'b0;
+      q_lsb_rw         <= 1'b0;
+      mem2cache_a      <= 28'b0;
+      mem2cache_d      <= 128'b0;
       mem2icache_in_en <= 0;
-    end else if (!rdy_in) begin
-      // nothing
-    end else begin
-      q_mem_rw <= 0;
-      case (status)
-        IDLE: begin
-          if (mem2icache_in_en || q_lsb_dout_en || q_lsb_w_done) begin
-            mem2icache_in_en <= 0;
-            q_lsb_dout_en <= 0;
-            q_lsb_w_done <= 0;
-          end else if (!roll_back) begin
-            if (lsb_d_type_conv != 2'b00) begin  // load & store first
-              if (lsb_rw_conv) begin
-                // synchronize
-                status  <= STORE;
-                store_a <= lsb_ain;
-              end else begin
-                status <= LOAD;
-                q_mem_aout <= lsb_ain;
-                q_lsb_dout <= 0;
-              end
-              stage <= 0;
-              case (lsb_d_type_conv)
-                2'b01: steps <= 1;
-                2'b10: steps <= 2;
-                2'b11: steps <= 4;
-              endcase
-            end else if (!if_instr_out_en) begin
-              status <= IF;
-              stage <= 0;
-              steps <= 16;
-              mem2icache_ain <= if_ain;
-              q_mem_aout <= {if_ain[`ICACHE_TAG_RANGE], if_ain[`ICACHE_IDX_RANGE], 6'b0};
-            end
-          end
-        end
+      mem2dcache_in_en <= 0;
+      q_mem_dout       <= 8'b0;
+      q_mem_aout       <= 32'b0;
+      ID               <= 0;
+    end else if (rdy_in) begin
+      if (lsb_d_type != 2'b00) begin
+        q_lsb_ain    <= lsb_ain;
+        q_lsb_d_type <= lsb_d_type;
+        q_lsb_din    <= lsb_din;
+        q_lsb_rw     <= lsb_rw;
+      end
 
-        IF: begin
-          if (stage != 0) mem2icache_din_[stage-1] <= mem_din;
-          if (stage + 1 == steps) q_mem_aout <= 0;
-          else q_mem_aout <= q_mem_aout + 1;
-          if (stage == steps) begin
-            status <= IDLE;
-            stage <= 0;
-            q_mem_rw <= 0;
-            q_mem_aout <= 0;
+      if (ls_done) begin
+        mem2cache_d[16*8-1:16*8-8] <= mem_din;
+        if (rw) begin
+          if (ID) begin
             mem2icache_in_en <= 1;
           end else begin
-            stage <= stage + 1;
+            mem2dcache_in_en <= 1;
           end
+        end else begin
+          q_mem_rw <= 0;
+          q_mem_w_done <= 1;
         end
+        ls_done <= 1'b0;
+      end else begin
+        mem2icache_in_en <= 0;
+        mem2dcache_in_en <= 0;
+        q_mem_w_done <= 0;
+      end
 
-        LOAD: begin
-          if (roll_back) begin
-            status <= IDLE;
-            stage <= 0;
-            q_mem_rw <= 0;
-            q_mem_aout <= 0;
-            q_lsb_dout_en <= 0;
-            q_lsb_w_done <= 0;
-          end else begin
-            case (stage)
-              1: q_lsb_dout[7:0] <= mem_din;
-              2: q_lsb_dout[15:8] <= mem_din;
-              3: q_lsb_dout[23:16] <= mem_din;
-              4: q_lsb_dout[31:24] <= mem_din;
-            endcase
-            if (stage + 1 == steps) q_mem_aout <= 0;
-            else q_mem_aout <= q_mem_aout + 1;
-            if (stage == steps) begin
-              status <= IDLE;
-              stage <= 0;
-              q_mem_rw <= 0;
-              q_mem_aout <= 0;
-              q_lsb_d_type <= 2'b00;
-              q_lsb_dout_en <= 1;
-            end else begin
-              stage <= stage + 1;
+      if (IO_done) begin
+        if (!lsb_rw_conv) begin
+          q_IO_din_en <= 1;
+          case (lsb_d_type_conv)
+            2'b01: q_lsb_din[7:0] <= mem_din;
+            2'b10: q_lsb_din[15:8] <= mem_din;
+            2'b11: q_lsb_din[31:24] <= mem_din;
+          endcase
+        end else begin
+          q_IO_w_done <= 1;
+        end
+        IO_done <= 0;
+        q_mem_rw <= 0;
+        q_lsb_d_type <= 2'b00;
+      end else begin
+        q_IO_din_en <= 0;
+        q_IO_w_done <= 0;
+      end
+
+      // if(rw) begin
+      // end else begin
+      // end
+      // if (stage != 0) mem2icache_din_[stage-1] <= mem_din;
+      // if (stage + 1 == steps) q_mem_aout <= 0;
+      // else q_mem_aout <= q_mem_aout + 1;
+      // if (stage == steps) begin
+      //   status <= IDLE;
+      //   stage <= 0;
+      //   q_mem_rw <= 0;
+      //   q_mem_aout <= 0;
+      //   mem2icache_in_en <= 1;
+      // end else begin
+      //   stage <= stage + 1;
+      // end
+      // load the memory
+      if (ls_proceeding) begin
+        q_mem_w_done <= 0;
+        if (rw) begin
+          case (stage)
+            4'b1111: begin
+              ls_proceeding                        <= 0;
+              idle                                 <= 1;
+              stage                                <= 0;
+              ls_done                              <= 1;
+              mem2cache_d[4'b1111*8-1:4'b1111*8-8] <= mem_din;
             end
-          end
-        end
-
-        STORE: begin
-          if (store_a[17:16] != 2'b11 || !io_buffer_full) begin
-            q_mem_rw <= 1;
-            case (stage)  // little-endian
-              0: q_mem_dout <= lsb_din[7:0];
-              1: q_mem_dout <= lsb_din[15:8];
-              2: q_mem_dout <= lsb_din[23:16];
-              3: q_mem_dout <= lsb_din[31:24];
-            endcase
-            if (stage == 0) q_mem_aout <= store_a;
-            else q_mem_aout <= q_mem_aout + 1;
-            if (stage == steps) begin
-              status <= IDLE;
-              stage <= 0;
-              q_mem_rw <= 0;
-              q_mem_aout <= 0;
-              q_lsb_d_type <= 2'b00;
-              q_lsb_w_done <= 1;
-            end else begin
-              stage <= stage + 1;
+            4'b1110: begin
+              stage <= 4'b1111;
+              mem2cache_d[4'b1110*8-1:4'b1110*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1111};
             end
-          end
+            4'b1101: begin
+              stage <= 4'b1110;
+              mem2cache_d[4'b1101*8-1:4'b1101*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1110};
+            end
+            4'b1100: begin
+              stage <= 4'b1101;
+              mem2cache_d[4'b1100*8-1:4'b1100*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1101};
+            end
+            4'b1011: begin
+              stage <= 4'b1100;
+              mem2cache_d[4'b1011*8-1:4'b1011*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1100};
+            end
+            4'b1010: begin
+              stage <= 4'b1011;
+              mem2cache_d[4'b1010*8-1:4'b1010*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1011};
+            end
+            4'b1001: begin
+              stage <= 4'b1010;
+              mem2cache_d[4'b1001*8-1:4'b1001*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1010};
+            end
+            4'b1000: begin
+              stage <= 4'b1001;
+              mem2cache_d[4'b1000*8-1:4'b1000*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1001};
+            end
+            4'b0111: begin
+              stage <= 4'b1000;
+              mem2cache_d[4'b0111*8-1:4'b0111*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b1000};
+            end
+            4'b0110: begin
+              stage <= 4'b0111;
+              mem2cache_d[4'b0110*8-1:4'b0110*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b0111};
+            end
+            4'b0101: begin
+              stage <= 4'b0110;
+              mem2cache_d[4'b0101*8-1:4'b0101*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b0110};
+            end
+            4'b0100: begin
+              stage <= 4'b0101;
+              mem2cache_d[4'b0100*8-1:4'b0100*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b0101};
+            end
+            4'b0011: begin
+              stage <= 4'b0100;
+              mem2cache_d[4'b0011*8-1:4'b0011*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b0100};
+            end
+            4'b0010: begin
+              stage <= 4'b0011;
+              mem2cache_d[4'b0010*8-1:4'b0010*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b0011};
+            end
+            4'b0001: begin
+              stage <= 4'b0010;
+              mem2cache_d[4'b0001*8-1:4'b0001*8-8] <= mem_din;
+              q_mem_aout <= {mem2cache_a, 4'b0010};
+            end
+            4'b0000: begin
+              stage <= 4'b0001;
+              q_mem_aout <= {mem2cache_a, 4'b0001};
+            end
+          endcase
+        end else begin
+          case (stage)
+            4'b1111: begin
+              ls_proceeding <= 0;
+              idle          <= 1;
+              stage         <= 0;
+              ls_done       <= 1;
+              q_mem_dout    <= mem2cache_d[16*8-1:16*8-8];
+              q_mem_aout    <= {mem2cache_a, 4'b1111};
+            end
+            4'b1110: begin
+              stage <= 4'b1111;
+              q_mem_dout <= mem2cache_d[4'b1110*8+7:4'b1110*8];
+              q_mem_aout <= {mem2cache_a, 4'b1110};
+            end
+            4'b1101: begin
+              stage <= 4'b1110;
+              q_mem_dout <= mem2cache_d[4'b1101*8+7:4'b1101*8];
+              q_mem_aout <= {mem2cache_a, 4'b1101};
+            end
+            4'b1100: begin
+              stage <= 4'b1101;
+              q_mem_dout <= mem2cache_d[4'b1100*8+7:4'b1100*8];
+              q_mem_aout <= {mem2cache_a, 4'b1100};
+            end
+            4'b1011: begin
+              stage <= 4'b1100;
+              q_mem_dout <= mem2cache_d[4'b1011*8+7:4'b1011*8];
+              q_mem_aout <= {mem2cache_a, 4'b1011};
+            end
+            4'b1010: begin
+              stage <= 4'b1011;
+              q_mem_dout <= mem2cache_d[4'b1010*8+7:4'b1010*8];
+              q_mem_aout <= {mem2cache_a, 4'b1010};
+            end
+            4'b1001: begin
+              stage <= 4'b1010;
+              q_mem_dout <= mem2cache_d[4'b1001*8+7:4'b1001*8];
+              q_mem_aout <= {mem2cache_a, 4'b1001};
+            end
+            4'b1000: begin
+              stage <= 4'b1001;
+              q_mem_dout <= mem2cache_d[4'b1000*8+7:4'b1000*8];
+              q_mem_aout <= {mem2cache_a, 4'b1000};
+            end
+            4'b0111: begin
+              stage <= 4'b1000;
+              q_mem_dout <= mem2cache_d[4'b0111*8+7:4'b0111*8];
+              q_mem_aout <= {mem2cache_a, 4'b0111};
+            end
+            4'b0110: begin
+              stage <= 4'b0111;
+              q_mem_dout <= mem2cache_d[4'b0110*8+7:4'b0110*8];
+              q_mem_aout <= {mem2cache_a, 4'b0110};
+            end
+            4'b0101: begin
+              stage <= 4'b0110;
+              q_mem_dout <= mem2cache_d[4'b0101*8+7:4'b0101*8];
+              q_mem_aout <= {mem2cache_a, 4'b0101};
+            end
+            4'b0100: begin
+              stage <= 4'b0101;
+              q_mem_dout <= mem2cache_d[4'b0100*8+7:4'b0100*8];
+              q_mem_aout <= {mem2cache_a, 4'b0100};
+            end
+            4'b0011: begin
+              stage <= 4'b0100;
+              q_mem_dout <= mem2cache_d[4'b0011*8+7:4'b0011*8];
+              q_mem_aout <= {mem2cache_a, 4'b0011};
+            end
+            4'b0010: begin
+              stage <= 4'b0011;
+              q_mem_dout <= mem2cache_d[4'b0010*8+7:4'b0010*8];
+              q_mem_aout <= {mem2cache_a, 4'b0010};
+            end
+            4'b0001: begin
+              stage <= 4'b0010;
+              q_mem_dout <= mem2cache_d[4'b0001*8+7:4'b0001*8];
+              q_mem_aout <= {mem2cache_a, 4'b0001};
+            end
+            4'b0000: begin
+              stage <= 4'b0001;
+              q_mem_rw <= 1'b1;
+              q_mem_dout <= mem2cache_d[4'b0000*8+7:4'b0000*8];
+              q_mem_aout <= {mem2cache_a, 4'b0000};
+            end
+          endcase
         end
-      endcase
-
-      if(lsb_d_type != 2'b00) begin
-        q_lsb_rw <= lsb_rw;
-        q_lsb_d_type <= lsb_d_type;
-        q_lsb_ain <= lsb_ain;
-        q_lsb_din <= lsb_din;
+      end else if (idle) begin
+        // two cycle for mem
+        if (idle_) begin
+          idle  <= 0;
+          idle_ <= 0;
+        end else begin
+          idle_ <= 1;
+        end
+      end else if (IO_proceeding) begin
+        if (!lsb_rw_conv || !io_buffer_full) begin
+          case (IO_status)
+            2'b00: begin
+              q_mem_aout <= lsb_ain_conv + 1;
+              IO_status  <= 2'b01;
+              if (lsb_d_type_conv == 2'b01) begin
+                IO_done <= 1;
+                IO_proceeding <= 0;
+              end
+            end
+            2'b01: begin
+              q_mem_aout <= lsb_ain_conv + 2;
+              IO_status  <= 2'b10;
+              if (!lsb_rw_conv) q_lsb_din[7:0] <= mem_din;
+              else q_mem_dout <= lsb_din_conv[15:8];
+              if (lsb_d_type_conv == 2'b10) begin
+                IO_done <= 1;
+                IO_proceeding <= 0;
+              end
+            end
+            2'b10: begin
+              q_mem_aout <= lsb_ain_conv + 3;
+              IO_status  <= 2'b11;
+              if (!lsb_rw_conv) q_lsb_din[15:8] <= mem_din;
+              else q_mem_dout <= lsb_din_conv[23:16];
+            end
+            2'b11: begin
+              IO_done <= 1;
+              IO_proceeding <= 0;
+              if (!lsb_rw_conv) begin
+                q_lsb_din[23:16] <= mem_din;
+                q_mem_aout       <= 32'b0;
+              end else begin
+                q_mem_dout <= lsb_din_conv[31:24];
+                q_mem_aout <= lsb_ain_conv + 4;
+              end
+            end
+          endcase
+        end
+      end else if (is_IO && !IO_done) begin
+        if (!lsb_rw_conv || !io_buffer_full) begin
+          IO_status     <= !lsb_rw_conv ? 2'b00 : 2'b01;
+          IO_proceeding <= !lsb_rw_conv == 1 || lsb_d_type_conv != 2'b01;
+          IO_done       <= !lsb_rw_conv == 0 && lsb_d_type_conv == 2'b01;
+          q_mem_rw      <= lsb_rw_conv;
+          q_mem_aout    <= lsb_ain_conv;
+          if (lsb_rw_conv) q_mem_dout <= lsb_din_conv[7:0];
+        end
+      end else if (dCache_miss) begin  // dcache first
+        rw  <= dCache_rw_out;
+        ID <= 0;
+        ls_proceeding    <= 1;
+        stage   <= 0;
+        if (dCache_rw_out) begin  
+          mem2cache_a <= dCache_miss_a;
+          q_mem_aout  <= {dCache_miss_a, 4'b0000};
+        end else begin  
+          mem2cache_a <= dCache_miss_a;
+          mem2cache_d <= dcache_write_back_en;
+          q_mem_aout  <= 32'b0;
+        end
+      end else if (!if_instr_out_en) begin
+        rw            <= 1; 
+        ID            <= 1;
+        ls_proceeding <= 1;
+        stage         <= 0;
+        mem2cache_a   <= if_ain[31:4];
+        q_mem_aout    <= {if_ain[31:4], 4'b0000};
+      end else begin
+        q_mem_aout <= 32'b0;
       end
     end
   end
 
-  assign mem_rw = q_mem_rw;
+  assign mem_rw   = q_mem_rw;
   assign mem_dout = q_mem_dout;
   assign mem_aout = q_mem_aout;
 
-  assign lsb_dout_en = q_lsb_dout_en;
-  assign lsb_dout = q_lsb_dout;
-  assign lsb_w_done = q_lsb_w_done;
 endmodule

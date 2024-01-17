@@ -81,6 +81,8 @@ module rs #(
   wire [3:0] busy_num_nxt = busy_num + (de_in_en ? 1'b1 : 1'b0) - (work_nxt ? 1'b1 : 1'b0);
   assign rs_full = (busy_num > 13);
 
+  wire [`ROB_IDX_WIDTH] ready_rob_idx=rob_idx[nxt_alu_idx];
+
   reg full;
   reg [4:0] nxt_free_idx;
   reg [4:0] nxt_alu_idx;
