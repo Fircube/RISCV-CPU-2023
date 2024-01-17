@@ -3,7 +3,7 @@
 
 // FIFO structure
 module lsb #(
-    parameter LSB_SIZE = 32
+    parameter LSB_SIZE = 16
 ) (
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal

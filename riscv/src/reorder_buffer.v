@@ -3,7 +3,7 @@
 
 // FIFO structure
 module rob #(
-    parameter ROB_SIZE = 32
+    parameter ROB_SIZE = 16
 ) (
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
