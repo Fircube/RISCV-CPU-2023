@@ -16,7 +16,7 @@ module iCache #(
     input wire [`CACHE_BLK_WIDTH] mem_din,
 
     // IF
-    input  wire [ `ADDR_WIDTH] if_ain,           // address from IF
+    input  wire [ `ADDR_WIDTH] if_ain,          
     output wire                if_instr_out_en,
     output wire [`INSTR_WIDTH] if_instr_out
 );

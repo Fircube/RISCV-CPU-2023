@@ -221,6 +221,7 @@ module memCtrl #(
       //   stage <= stage + 1;
       // end
       // load the memory
+      
       if (ls_proceeding) begin
         q_mem_w_done <= 0;
         if (rw) begin
