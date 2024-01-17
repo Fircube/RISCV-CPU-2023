@@ -3,7 +3,7 @@
 
 // FIFO structure
 module rob #(
-    parameter ROB_SIZE = 16
+    parameter ROB_SIZE = 32
 ) (
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
@@ -146,7 +146,7 @@ module rob #(
       front               <= {`ROB_IDX_SIZE{1'b0}};
       rear                <= {`ROB_IDX_SIZE{1'b0}};
       // empty              <= 1'b1;
-      for (i = 0; i < `ROB_SIZE; i = i + 1) begin
+      for (i = 0; i < ROB_SIZE; i = i + 1) begin
         busy[i]        <= 1'b0;
         ready[i]       <= 1'b0;
         jump[i]        <= 1'b0;
@@ -166,7 +166,7 @@ module rob #(
         q_rf_out_en         <= 1'b0;
         front               <= {`ROB_IDX_SIZE{1'b0}};
         rear                <= {`ROB_IDX_SIZE{1'b0}};
-        for (i = 0; i < `ROB_SIZE; i = i + 1) begin
+        for (i = 0; i < ROB_SIZE; i = i + 1) begin
           busy[i] <= 1'b0;
         end
       end else begin
@@ -225,7 +225,7 @@ module rob #(
                   q_corr_pc   <= not_jump_to[front];
                   front       <= {`ROB_IDX_SIZE{1'b0}};
                   rear        <= {`ROB_IDX_SIZE{1'b0}};
-                  for (i = 0; i < `ROB_SIZE; i = i + 1) begin
+                  for (i = 0; i < ROB_SIZE; i = i + 1) begin
                     busy[i] <= 1'b0;
                   end
                 end

@@ -3,7 +3,7 @@
 
 // FIFO structure
 module lsb #(
-    parameter LSB_SIZE = 16
+    parameter LSB_SIZE = 32
 ) (
     input wire clk,     // system clock signal
     input wire rst_in,  // reset signal
@@ -121,7 +121,7 @@ module lsb #(
       front <= 0;
       rear <= 0;
       // last <= 5'b10000;
-      for (i = 0; i < `LSB_SIZE; i = i + 1) begin
+      for (i = 0; i < LSB_SIZE; i = i + 1) begin
         rob_idx[i] <= 0;
         busy[i]    <= 0;
         ls[i]      <= 0;
@@ -138,7 +138,7 @@ module lsb #(
     end else if (!rdy_in) begin
       //
     end else if (roll_back) begin
-      for (i = 0; i < `LSB_SIZE; i = i + 1) begin
+      for (i = 0; i < LSB_SIZE; i = i + 1) begin
         if (!commit[i]) begin
           busy[i] <= 0;
           if (i == front && !empty) begin
@@ -152,7 +152,7 @@ module lsb #(
       q_mem_d_type <= 0;
     end else begin
       if (rob_committed_en) begin
-        for (i = 0; i < `LSB_SIZE; i = i + 1) begin
+        for (i = 0; i < LSB_SIZE; i = i + 1) begin
           if (busy[i] && rob_idx[i] == rob_committed_idx) begin
             commit[i] <= 1;
           end
@@ -160,7 +160,7 @@ module lsb #(
       end
 
       if (mem_din_en) begin
-        for (i = 0; i < `LSB_SIZE; i = i + 1) begin
+        for (i = 0; i < LSB_SIZE; i = i + 1) begin
           if (busy[i]) begin
             if (Qj_en[i] && lsb2cdb_rob_idx == Qj[i]) begin
               Qj_en[i] <= 0;
@@ -175,7 +175,7 @@ module lsb #(
       end
 
       if (rs_in_en) begin
-        for (i = 0; i < `LSB_SIZE; i = i + 1) begin
+        for (i = 0; i < LSB_SIZE; i = i + 1) begin
           if (busy[i]) begin
             if (Qj_en[i] && rs_rob_idx_in == Qj[i]) begin
               Qj_en[i] <= 0;
